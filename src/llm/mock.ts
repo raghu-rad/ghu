@@ -1,9 +1,9 @@
-import type { GenerateOptions, LLMClient, LLMMessage } from './index.js';
+import type { GenerateOptions, LLMClient, LLMMessage, LLMResponse } from './index.js';
 
 export class MockLLMClient implements LLMClient {
   constructor(private readonly model: string) {}
 
-  async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMMessage> {
+  async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMResponse> {
     void options;
 
     const lastUserMessage = [...messages]
@@ -15,8 +15,10 @@ export class MockLLMClient implements LLMClient {
       'I did not receive any input. Feel free to ask me something!';
 
     return {
-      role: 'assistant',
-      content: `[mock:${this.model}] ${content}`,
+      message: {
+        role: 'assistant',
+        content: `[mock:${this.model}] ${content}`,
+      },
     };
   }
 }

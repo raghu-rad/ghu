@@ -2,9 +2,8 @@ import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
 import type { AgentConfig } from '../config/index.js';
-import type { LLMClient, LLMMessage } from '../llm/index.js';
+import type { LLMClient, LLMMessage, LLMResponse, LLMToolCall } from '../llm/index.js';
 import { PromptBuilder } from '../prompt/builder.js';
-import type { ToolCall } from '../tools/index.js';
 import { ToolRegistry } from '../tools/index.js';
 
 export interface AgentOptions {
@@ -70,111 +69,89 @@ export class Agent {
       const messages = this.promptBuilder.build({
         systemPrompt: this.options.config.systemPrompt,
         history: this.history,
-        tools: this.toolRegistry.list(),
       });
 
-      let response: LLMMessage;
+      const toolSpecs = this.toolRegistry.list().map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      }));
+
+      let response: LLMResponse;
       try {
-        response = await this.options.llmClient.generate(messages);
+        response = await this.options.llmClient.generate(messages, {
+          tools: toolSpecs,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error(`LLM call failed: ${message}`);
         return;
       }
 
-      this.history.push(response);
+      const assistantMessage: LLMMessage = {
+        ...response.message,
+        toolCalls: response.toolCalls ?? response.message.toolCalls,
+      };
 
-      const toolCall = this.parseToolCall(response.content);
+      this.history.push(assistantMessage);
 
-      if (!toolCall) {
-        console.log(response.content);
+      const toolCalls = assistantMessage.toolCalls ?? [];
+
+      if (toolCalls.length === 0) {
+        if (assistantMessage.content.trim().length > 0) {
+          console.log(assistantMessage.content);
+        }
         return;
       }
 
-      const tool = this.toolRegistry.get(toolCall.tool);
-
-      if (!tool) {
-        const errorContent = `Requested tool "${toolCall.tool}" is not available.`;
-        console.error(errorContent);
-        this.history.push({ role: 'tool', name: toolCall.tool, content: errorContent });
-        continue;
+      for (const toolCall of toolCalls) {
+        await this.executeTool(toolCall);
       }
-
-      console.log(`→ Executing tool: ${tool.name}`);
-
-      let toolResult: LLMMessage;
-      try {
-        const result = await tool.run(toolCall.input);
-        const content = result.error ? `ERROR: ${result.error}` : result.output;
-
-        if (content) {
-          console.log(content);
-        }
-
-        toolResult = {
-          role: 'tool',
-          name: tool.name,
-          content,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown tool execution error';
-        console.error(`Tool execution failed: ${message}`);
-        toolResult = {
-          role: 'tool',
-          name: tool.name,
-          content: `ERROR: ${message}`,
-        };
-      }
-
-      this.history.push(toolResult);
     }
 
     console.warn('Reached maximum tool iterations without a final response.');
   }
 
-  private parseToolCall(content: string): ToolCall | null {
-    const candidates = this.extractJsonCandidates(content);
+  private async executeTool(toolCall: LLMToolCall): Promise<void> {
+    const tool = this.toolRegistry.get(toolCall.name);
 
-    for (const candidate of candidates) {
-      try {
-        const parsed = JSON.parse(candidate);
+    if (!tool) {
+      const errorContent = `Requested tool "${toolCall.name}" is not available.`;
+      console.error(errorContent);
+      this.history.push({
+        role: 'tool',
+        name: toolCall.name,
+        content: errorContent,
+        toolCallId: toolCall.id,
+      });
+      return;
+    }
 
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          typeof parsed.tool === 'string' &&
-          parsed.tool.length > 0 &&
-          parsed.input &&
-          typeof parsed.input === 'object'
-        ) {
-          return {
-            tool: parsed.tool,
-            input: parsed.input,
-          };
-        }
-      } catch (error) {
-        void error;
+    console.log(`→ Executing tool: ${tool.name}`);
+
+    try {
+      const result = await tool.run(toolCall.arguments ?? {});
+      const content = result.error ? `ERROR: ${result.error}` : result.output;
+
+      if (content.trim().length > 0) {
+        console.log(content);
       }
+
+      this.history.push({
+        role: 'tool',
+        name: tool.name,
+        content,
+        toolCallId: toolCall.id,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown tool execution error';
+      console.error(`Tool execution failed: ${message}`);
+      this.history.push({
+        role: 'tool',
+        name: tool.name,
+        content: `ERROR: ${message}`,
+        toolCallId: toolCall.id,
+      });
     }
-
-    return null;
-  }
-
-  private extractJsonCandidates(content: string): string[] {
-    const trimmed = content.trim();
-    const candidates: string[] = [];
-
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      candidates.push(trimmed);
-    }
-
-    const codeBlockPattern = /```json\s*([\s\S]+?)```/gi;
-    let match: RegExpExecArray | null;
-
-    while ((match = codeBlockPattern.exec(content)) !== null) {
-      candidates.push(match[1].trim());
-    }
-
-    return candidates;
   }
 }

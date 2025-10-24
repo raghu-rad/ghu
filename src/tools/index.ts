@@ -7,11 +7,6 @@ export interface ToolExecutionResult {
   error?: string;
 }
 
-export interface ToolCall {
-  tool: string;
-  input: ToolInput;
-}
-
 export interface Tool {
   readonly name: string;
   readonly description: string;
