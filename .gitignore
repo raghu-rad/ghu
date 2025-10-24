@@ -1,0 +1,20 @@
+# Node & pnpm
+node_modules/
+.pnpm-store/
+pnpm-debug.log
+
+# Build artifacts
+dist/
+
+# Env files
+.env
+.env.local
+.env.*
+!.env.example
+
+# Testing caches
+.vitest/
+.eslintcache
+
+# macOS
+.DS_Store

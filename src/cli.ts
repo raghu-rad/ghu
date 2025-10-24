@@ -52,7 +52,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  const llmClient = createLLMClient(config.provider, config.model);
+  const llmClient = createLLMClient(config.provider, config.model, {
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+  });
   const agent = new Agent({
     config,
     llmClient,
