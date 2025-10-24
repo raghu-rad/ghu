@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     config,
     llmClient,
     promptBuilder: new PromptBuilder(),
+    toolRegistry,
   });
 
   await agent.run();
