@@ -1,3 +1,5 @@
+import OpenAI from 'openai';
+
 import type { GenerateOptions, LLMClient, LLMMessage } from './index.js';
 
 export interface DeepSeekClientOptions {
@@ -6,71 +8,58 @@ export interface DeepSeekClientOptions {
   baseUrl?: string;
 }
 
-interface DeepSeekChatCompletionChoice {
-  index: number;
-  message: {
-    role: LLMMessage['role'];
-    content: string;
-  };
-  finish_reason: string;
-}
-
-interface DeepSeekChatCompletionResponse {
-  choices: DeepSeekChatCompletionChoice[];
-}
-
 export class DeepSeekLLMClient implements LLMClient {
-  private readonly apiKey: string;
+  private readonly client: OpenAI;
   private readonly model: string;
-  private readonly endpoint: string;
 
   constructor(options: DeepSeekClientOptions) {
     if (!options.apiKey) {
       throw new Error('DEEPSEEK_API_KEY environment variable is required for DeepSeek provider.');
     }
 
-    this.apiKey = options.apiKey;
+    const baseURL = options.baseUrl?.replace(/\/$/, '') ?? 'https://api.deepseek.com';
+
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL,
+    });
     this.model = options.model;
-    const baseUrl = options.baseUrl?.replace(/\/$/, '') ?? 'https://api.deepseek.com';
-    this.endpoint = `${baseUrl}/chat/completions`;
   }
 
   async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMMessage> {
-    const payload = {
-      model: this.model,
-      messages: messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-      temperature: options?.temperature,
-      max_tokens: options?.maxTokens,
-      stream: false,
-    };
+    try {
+      const completion = await this.client.chat.completions.create({
+        model: this.model,
+        messages: messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          name: message.name,
+        })),
+        temperature: options?.temperature,
+        max_tokens: options?.maxTokens,
+      });
 
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    });
+      const choice = completion.choices?.[0];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`DeepSeek API error (${response.status}): ${errorText}`);
+      if (!choice || !choice.message) {
+        throw new Error('DeepSeek API returned no completion choices.');
+      }
+
+      return {
+        role: (choice.message.role as LLMMessage['role']) ?? 'assistant',
+        content: choice.message.content ?? '',
+      };
+    } catch (error) {
+      if (error instanceof OpenAI.APIError) {
+        const status = error.status ?? 'unknown';
+        throw new Error(`DeepSeek API error (${status}): ${error.message}`);
+      }
+
+      if (error instanceof Error) {
+        throw new Error(`DeepSeek API error: ${error.message}`);
+      }
+
+      throw new Error('DeepSeek API error: Unknown error');
     }
-
-    const data = (await response.json()) as DeepSeekChatCompletionResponse;
-    const choice = data.choices?.[0];
-
-    if (!choice) {
-      throw new Error('DeepSeek API returned no completion choices.');
-    }
-
-    return {
-      role: choice.message.role,
-      content: choice.message.content,
-    };
   }
 }
