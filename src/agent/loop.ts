@@ -127,15 +127,9 @@ export class Agent {
       return;
     }
 
-    console.log(`→ Executing tool: ${tool.name}`);
-
     try {
       const result = await tool.run(toolCall.arguments ?? {});
       const content = result.error ? `ERROR: ${result.error}` : result.output;
-
-      if (content.trim().length > 0) {
-        console.log(content);
-      }
 
       this.history.push({
         role: 'tool',
