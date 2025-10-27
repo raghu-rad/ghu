@@ -10,11 +10,19 @@ export interface AgentConfig {
   baseUrl?: string;
 }
 
+const normalizeProvider = (value: string | undefined): 'deepseek' | 'mock' => {
+  if (!value) {
+    return 'mock';
+  }
+  const normalized = value.toLowerCase();
+  return normalized === 'deepseek' ? 'deepseek' : 'mock';
+};
+
 export function loadConfig(): AgentConfig {
-  const envProvider = process.env.RAGENT_PROVIDER;
-  const provider = envProvider ? 'deepseek' : 'mock';
-  const model = process.env.RAGENT_MODEL ?? (provider === 'deepseek' ? 'deepseek-chat' : 'mock-alpha');
-  const systemPrompt = process.env.RAGENT_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
+  const provider = normalizeProvider(process.env.GHU_PROVIDER);
+
+  const model = process.env.GHU_MODEL ?? (provider === 'deepseek' ? 'deepseek-chat' : 'mock-alpha');
+  const systemPrompt = process.env.GHU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
   const apiKey = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : undefined;
   const baseUrl = provider === 'deepseek' ? process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com' : undefined;
 

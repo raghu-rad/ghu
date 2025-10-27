@@ -1,12 +1,15 @@
 #!/usr/bin/env node
+import React from 'react';
 import { Command } from 'commander';
+import { render } from 'ink';
 
 import { Agent } from './agent/index.js';
 import { loadConfig } from './config/index.js';
 import { createLLMClient } from './llm/index.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { createDefaultToolRegistry } from './tools/index.js';
-import packageJson from '../package.json' assert { type: 'json' };
+import { App } from './ui/app.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 interface CliOptions {
   provider?: string;
@@ -19,8 +22,8 @@ async function main(): Promise<void> {
   const program = new Command();
 
   program
-    .name('ragent')
-    .description('A modular terminal agent CLI.')
+    .name('ghu')
+    .description('Ghu, a modular terminal agent CLI.')
     .version(packageJson.version ?? '0.0.0')
     .option('-p, --provider <provider>', 'LLM provider override')
     .option('-m, --model <model>', 'Model name override')
@@ -61,9 +64,11 @@ async function main(): Promise<void> {
     llmClient,
     promptBuilder: new PromptBuilder(),
     toolRegistry,
+    maxIterations: 10,
   });
 
-  await agent.run();
+  const { waitUntilExit } = render(<App agent={agent} />);
+  await waitUntilExit();
 }
 
 main().catch((error) => {
