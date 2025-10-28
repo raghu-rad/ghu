@@ -6,9 +6,7 @@ export class MockLLMClient implements LLMClient {
   async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMResponse> {
     void options;
 
-    const lastUserMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === 'user');
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
 
     const content =
       lastUserMessage?.content.trim() ??

@@ -125,7 +125,9 @@ export class DeepSeekLLMClient implements LLMClient {
     };
   }
 
-  private parseToolCall(toolCall: OpenAI.Chat.Completions.ChatCompletionMessageToolCall): LLMToolCall {
+  private parseToolCall(
+    toolCall: OpenAI.Chat.Completions.ChatCompletionMessageToolCall,
+  ): LLMToolCall {
     if (toolCall.type !== 'function' || !toolCall.function) {
       return {
         id: toolCall.id ?? `tool-call-${toolCall.type}`,

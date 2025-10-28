@@ -1,5 +1,5 @@
-import { marked } from 'marked';
-import type { Tokens, TokensList } from 'marked';
+import { Lexer, marked } from 'marked';
+import type { Token, Tokens, TokensList } from 'marked';
 
 const enum Ansi {
   reset = '\x1b[0m',
@@ -28,13 +28,13 @@ const enum Ansi {
 
 const bullet = `${Ansi.dim}\u2022${Ansi.dimOff}`;
 
+type TokenSequence = TokensList | Token[];
+
 export function formatMarkdown(markdown: string): string {
   const clean = markdown.replace(/\r\n/g, '\n');
   const tokens = marked.lexer(clean, {
     gfm: true,
     breaks: false,
-    smartLists: true,
-    smartypants: false,
   });
 
   return renderTokens(tokens).trimEnd();
@@ -77,7 +77,7 @@ export function formatUserMessage(message: string, width?: number): string {
   return [labelLine, ...contentLines].join('\n');
 }
 
-function renderTokens(tokens: TokensList, indent = 0): string {
+function renderTokens(tokens: TokenSequence, indent = 0): string {
   let output = '';
 
   for (const token of tokens) {
@@ -85,33 +85,49 @@ function renderTokens(tokens: TokensList, indent = 0): string {
       case 'space':
         output += '\n';
         break;
-      case 'paragraph':
-        output += `${renderInline(token.tokens ?? [])}\n\n`;
+      case 'paragraph': {
+        const paragraphToken = token as Tokens.Paragraph;
+        output += `${renderInline(paragraphToken.tokens ?? [])}\n\n`;
         break;
-      case 'heading':
-        output += renderHeading(token);
+      }
+      case 'heading': {
+        const headingToken = token as Tokens.Heading;
+        output += renderHeading(headingToken);
         break;
-      case 'code':
-        output += renderCode(token);
+      }
+      case 'code': {
+        const codeToken = token as Tokens.Code;
+        output += renderCode(codeToken);
         break;
-      case 'blockquote':
-        output += renderBlockquote(token);
+      }
+      case 'blockquote': {
+        const blockquoteToken = token as Tokens.Blockquote;
+        output += renderBlockquote(blockquoteToken);
         break;
-      case 'list':
-        output += renderList(token, indent);
+      }
+      case 'list': {
+        const listToken = token as Tokens.List;
+        output += renderList(listToken, indent);
         break;
-      case 'html':
-        output += `${token.text}\n`;
+      }
+      case 'html': {
+        const htmlToken = token as Tokens.HTML | Tokens.Tag;
+        output += `${htmlToken.text}\n`;
         break;
-      case 'text':
-        output += `${renderInline(token.tokens ?? [])}\n`;
+      }
+      case 'text': {
+        const textToken = token as Tokens.Text;
+        output += `${renderInline(textToken.tokens ?? [])}\n`;
         break;
+      }
       case 'hr':
         output += `${Ansi.dim}─`.repeat(20) + `${Ansi.dimOff}\n`;
         break;
-      case 'table':
-        output += renderTable(token);
+      case 'table': {
+        const tableToken = token as Tokens.Table;
+        output += renderTable(tableToken);
         break;
+      }
       default:
         break;
     }
@@ -140,13 +156,18 @@ function renderCode(token: Tokens.Code): string {
   const languageLabel = token.lang ? ` (${token.lang})` : '';
   const header = `${Ansi.dim}┌─ code${languageLabel}${Ansi.dimOff}`;
   const footer = `${Ansi.dim}└────────────${Ansi.dimOff}`;
-  const lines = token.text.replace(/\t/g, '  ').split('\n').map((line) => `  ${Ansi.foregroundAccent}${line}${Ansi.foregroundDefault}`);
+  const lines = token.text
+    .replace(/\t/g, '  ')
+    .split('\n')
+    .map((line) => `  ${Ansi.foregroundAccent}${line}${Ansi.foregroundDefault}`);
 
   return [header, ...lines, footer, ''].join('\n');
 }
 
 function renderBlockquote(token: Tokens.Blockquote): string {
-  const inner = renderTokens(token.tokens ?? []).trimEnd().split('\n');
+  const inner = renderTokens(token.tokens ?? [])
+    .trimEnd()
+    .split('\n');
   const quoted = inner.map((line) => `${Ansi.dim}│ ${line}${Ansi.dimOff}`);
   return `${quoted.join('\n')}\n\n`;
 }
@@ -164,7 +185,8 @@ function renderList(token: Tokens.List, indent: number): string {
       marker = `${lineIndent}${Ansi.dim}${box}${Ansi.dimOff} `;
       continuationIndent = `${lineIndent}    `;
     } else if (token.ordered) {
-      const number = (token.start ?? 1) + index;
+      const start = typeof token.start === 'number' ? token.start : 1;
+      const number = start + index;
       marker = `${lineIndent}${Ansi.dim}${number}.${Ansi.dimOff} `;
       continuationIndent = `${lineIndent}${' '.repeat(String(number).length + 2)}`;
     } else {
@@ -172,7 +194,9 @@ function renderList(token: Tokens.List, indent: number): string {
       continuationIndent = `${lineIndent}  `;
     }
 
-    const content = item.tokens ? renderTokens(item.tokens, indent + 2).trimEnd() : renderInline(marked.lexer.inlineTokens(item.text ?? ''));
+    const content = item.tokens
+      ? renderTokens(item.tokens, indent + 2).trimEnd()
+      : renderInline(Lexer.lexInline(item.text ?? ''));
     const contentLines = content.split('\n');
 
     const firstLine = `${marker}${contentLines[0] ?? ''}`;
@@ -184,11 +208,15 @@ function renderList(token: Tokens.List, indent: number): string {
 }
 
 function renderTable(token: Tokens.Table): string {
-  const headers = token.header.map((cell) => renderInline(cell.tokens ?? [])).join(` ${Ansi.dim}|${Ansi.dimOff} `);
+  const headers = token.header
+    .map((cell) => renderInline(cell.tokens ?? []))
+    .join(` ${Ansi.dim}|${Ansi.dimOff} `);
   const separator = token.align
     ?.map(() => `${Ansi.dim}${'-'.repeat(5)}${Ansi.dimOff}`)
     .join(` ${Ansi.dim}+${Ansi.dimOff} `);
-  const rows = token.rows.map((row) => row.map((cell) => renderInline(cell.tokens ?? [])).join(` ${Ansi.dim}|${Ansi.dimOff} `));
+  const rows = token.rows.map((row) =>
+    row.map((cell) => renderInline(cell.tokens ?? [])).join(` ${Ansi.dim}|${Ansi.dimOff} `),
+  );
 
   const tableLines = [`${Ansi.bold}${headers}${Ansi.boldOff}`];
   if (separator) {
@@ -199,41 +227,53 @@ function renderTable(token: Tokens.Table): string {
   return `${tableLines.join('\n')}\n\n`;
 }
 
-function renderInline(tokens: TokensList): string {
+function renderInline(tokens: TokenSequence): string {
   let result = '';
 
   for (const token of tokens) {
     switch (token.type) {
-      case 'text':
-        result += token.text ?? '';
-        if (token.tokens) {
-          result += renderInline(token.tokens);
+      case 'text': {
+        const textToken = token as Tokens.Text;
+        result += textToken.text ?? '';
+        if (textToken.tokens) {
+          result += renderInline(textToken.tokens);
         }
         break;
-      case 'strong':
-        result += `${Ansi.bold}${renderInline(token.tokens ?? [])}${Ansi.boldOff}`;
+      }
+      case 'strong': {
+        const strongToken = token as Tokens.Strong;
+        result += `${Ansi.bold}${renderInline(strongToken.tokens ?? [])}${Ansi.boldOff}`;
         break;
-      case 'em':
-        result += `${Ansi.italic}${renderInline(token.tokens ?? [])}${Ansi.italicOff}`;
+      }
+      case 'em': {
+        const emToken = token as Tokens.Em;
+        result += `${Ansi.italic}${renderInline(emToken.tokens ?? [])}${Ansi.italicOff}`;
         break;
-      case 'del':
-        result += `${Ansi.strikethrough}${renderInline(token.tokens ?? [])}${Ansi.strikethroughOff}`;
+      }
+      case 'del': {
+        const delToken = token as Tokens.Del;
+        result += `${Ansi.strikethrough}${renderInline(delToken.tokens ?? [])}${Ansi.strikethroughOff}`;
         break;
+      }
       case 'codespan':
-        result += `${Ansi.foregroundAccent}${token.text ?? ''}${Ansi.foregroundDefault}`;
+        result += `${Ansi.foregroundAccent}${(token as Tokens.Codespan).text ?? ''}${Ansi.foregroundDefault}`;
         break;
-      case 'link':
-        result += `${Ansi.underline}${renderInline(token.tokens ?? [])}${Ansi.underlineOff} ${Ansi.dim}(${token.href})${Ansi.dimOff}`;
+      case 'link': {
+        const linkToken = token as Tokens.Link;
+        result += `${Ansi.underline}${renderInline(linkToken.tokens ?? [])}${Ansi.underlineOff} ${Ansi.dim}(${linkToken.href})${Ansi.dimOff}`;
         break;
+      }
       case 'escape':
-        result += token.text ?? '';
+        result += (token as Tokens.Escape).text ?? '';
         break;
       case 'br':
         result += '\n';
         break;
-      case 'image':
-        result += token.text ?? `[image: ${token.href}]`;
+      case 'image': {
+        const imageToken = token as Tokens.Image;
+        result += imageToken.text ?? `[image: ${imageToken.href}]`;
         break;
+      }
       default:
         break;
     }
