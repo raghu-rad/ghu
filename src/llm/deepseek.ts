@@ -80,31 +80,38 @@ export class DeepSeekLLMClient implements LLMClient {
       return {
         role: 'tool',
         content: message.content,
-        tool_call_id: message.toolCallId,
+        tool_call_id: message.toolCallId ?? 'tool-call-response',
       };
     }
 
-    const base: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+    if (message.role === 'assistant') {
+      const assistantMessage: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
+        role: 'assistant',
+        content: message.content,
+      };
+
+      if (message.name) {
+        assistantMessage.name = message.name;
+      }
+
+      if (message.toolCalls && message.toolCalls.length > 0) {
+        assistantMessage.tool_calls = message.toolCalls.map((toolCall, index) => ({
+          id: toolCall.id ?? `generated-tool-call-${index}`,
+          type: 'function',
+          function: {
+            name: toolCall.name,
+            arguments: JSON.stringify(toolCall.arguments ?? {}),
+          },
+        }));
+      }
+
+      return assistantMessage;
+    }
+
+    return {
       role: message.role,
       content: message.content,
     };
-
-    if (message.name) {
-      base.name = message.name;
-    }
-
-    if (message.toolCalls && message.toolCalls.length > 0) {
-      base.tool_calls = message.toolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        type: 'function' as const,
-        function: {
-          name: toolCall.name,
-          arguments: JSON.stringify(toolCall.arguments ?? {}),
-        },
-      }));
-    }
-
-    return base;
   }
 
   private mapTool(tool: ToolSpecification): OpenAI.Chat.Completions.ChatCompletionTool {
@@ -119,11 +126,17 @@ export class DeepSeekLLMClient implements LLMClient {
   }
 
   private parseToolCall(toolCall: OpenAI.Chat.Completions.ChatCompletionMessageToolCall): LLMToolCall {
+    if (toolCall.type !== 'function' || !toolCall.function) {
+      return {
+        id: toolCall.id ?? `tool-call-${toolCall.type}`,
+        name: toolCall.type,
+        arguments: {},
+      };
+    }
+
     let parsedArguments: Record<string, unknown> = {};
     try {
-      parsedArguments = toolCall.function.arguments
-        ? JSON.parse(toolCall.function.arguments)
-        : {};
+      parsedArguments = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown parse error';
       parsedArguments = {
@@ -133,8 +146,8 @@ export class DeepSeekLLMClient implements LLMClient {
     }
 
     return {
-      id: toolCall.id,
-      name: toolCall.function.name,
+      id: toolCall.id ?? `tool-call-${toolCall.type}`,
+      name: toolCall.function.name ?? 'unknown',
       arguments: parsedArguments,
     };
   }

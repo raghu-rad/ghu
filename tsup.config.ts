@@ -15,7 +15,7 @@ export default defineConfig([
   },
   {
     entry: {
-      cli: 'src/cli.ts',
+      cli: 'src/cli.tsx',
     },
     sourcemap: true,
     clean: false,

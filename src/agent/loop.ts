@@ -1,6 +1,3 @@
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-
 import type { AgentConfig } from '../config/index.js';
 import type { LLMClient, LLMMessage, LLMResponse, LLMToolCall } from '../llm/index.js';
 import { PromptBuilder } from '../prompt/builder.js';
@@ -12,6 +9,13 @@ export interface AgentOptions {
   promptBuilder?: PromptBuilder;
   toolRegistry: ToolRegistry;
   maxIterations?: number;
+}
+
+export interface AgentTurnResult {
+  assistant?: LLMMessage;
+  toolMessages?: LLMMessage[];
+  error?: string;
+  exhaustedIterations?: boolean;
 }
 
 export class Agent {
@@ -26,44 +30,18 @@ export class Agent {
     this.maxIterations = options.maxIterations ?? 5;
   }
 
-  async run(): Promise<void> {
-    const rl = readline.createInterface({
-      input,
-      output,
-    });
-
-    console.log('ragent ready. Type /exit to quit, /reset to clear the conversation.');
-
-    try {
-      for (;;) {
-        const userInput = await rl.question('> ');
-        const trimmed = userInput.trim();
-
-        if (trimmed.length === 0) {
-          continue;
-        }
-
-        if (trimmed === '/exit') {
-          break;
-        }
-
-        if (trimmed === '/reset') {
-          this.history.length = 0;
-          console.log('Conversation history cleared.');
-          continue;
-        }
-
-        await this.handleUserInput(trimmed);
-      }
-    } finally {
-      rl.close();
-    }
-
-    console.log('Goodbye!');
+  reset(): void {
+    this.history.length = 0;
   }
 
-  private async handleUserInput(userInput: string): Promise<void> {
+  getHistory(): readonly LLMMessage[] {
+    return this.history;
+  }
+
+  async processUserMessage(userInput: string): Promise<AgentTurnResult> {
     this.history.push({ role: 'user', content: userInput });
+
+    const toolMessages: LLMMessage[] = [];
 
     for (let iteration = 0; iteration < this.maxIterations; iteration += 1) {
       const messages = this.promptBuilder.build({
@@ -84,8 +62,7 @@ export class Agent {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`LLM call failed: ${message}`);
-        return;
+        return { error: `LLM call failed: ${message}` };
       }
 
       const assistantMessage: LLMMessage = {
@@ -98,54 +75,59 @@ export class Agent {
       const toolCalls = assistantMessage.toolCalls ?? [];
 
       if (toolCalls.length === 0) {
-        if (assistantMessage.content.trim().length > 0) {
-          console.log(assistantMessage.content);
-        }
-        return;
+        return { assistant: assistantMessage, toolMessages };
       }
 
       for (const toolCall of toolCalls) {
-        await this.executeTool(toolCall);
+        const toolMessage = await this.executeTool(toolCall);
+        toolMessages.push(toolMessage);
       }
     }
 
-    console.warn('Reached maximum tool iterations without a final response.');
+    return {
+      error: 'Reached maximum tool iterations without a final response.',
+      toolMessages,
+      exhaustedIterations: true,
+    };
   }
 
-  private async executeTool(toolCall: LLMToolCall): Promise<void> {
+  private async executeTool(toolCall: LLMToolCall): Promise<LLMMessage> {
     const tool = this.toolRegistry.get(toolCall.name);
 
     if (!tool) {
-      const errorContent = `Requested tool "${toolCall.name}" is not available.`;
-      console.error(errorContent);
-      this.history.push({
+      const missingToolMessage: LLMMessage = {
         role: 'tool',
         name: toolCall.name,
-        content: errorContent,
+        content: `ERROR: Requested tool "${toolCall.name}" is not available.`,
         toolCallId: toolCall.id,
-      });
-      return;
+      };
+      this.history.push(missingToolMessage);
+      return missingToolMessage;
     }
 
     try {
       const result = await tool.run(toolCall.arguments ?? {});
       const content = result.error ? `ERROR: ${result.error}` : result.output;
 
-      this.history.push({
+      const message: LLMMessage = {
         role: 'tool',
         name: tool.name,
         content,
         toolCallId: toolCall.id,
-      });
+      };
+
+      this.history.push(message);
+      return message;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown tool execution error';
-      console.error(`Tool execution failed: ${message}`);
-      this.history.push({
+      const messageContent = error instanceof Error ? error.message : 'Unknown tool execution error';
+      const message: LLMMessage = {
         role: 'tool',
         name: tool.name,
-        content: `ERROR: ${message}`,
+        content: `ERROR: ${messageContent}`,
         toolCallId: toolCall.id,
-      });
+      };
+      this.history.push(message);
+      return message;
     }
   }
 }

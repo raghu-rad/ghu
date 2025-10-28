@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "node16",
-    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "types": ["node", "react"],
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -11,10 +11,11 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
-    "rootDir": "src",
+    "rootDir": ".",
     "baseUrl": ".",
+    "jsx": "react-jsx",
     "paths": {
-      "@ragent/*": ["src/*"]
+      "@ghu/*": ["src/*"]
     }
   },
   "include": ["src", "test", "tsup.config.ts"]
