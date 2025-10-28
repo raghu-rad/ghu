@@ -2,9 +2,26 @@ export interface ToolInput {
   [key: string]: unknown;
 }
 
+export type ToolDisplayTone = 'info' | 'success' | 'warning' | 'error';
+
+export interface ToolDisplayPreview {
+  lines: string[];
+  truncated?: boolean;
+  label?: string;
+}
+
+export interface ToolDisplay {
+  message: string;
+  tone?: ToolDisplayTone;
+  details?: string;
+  metadata?: Record<string, unknown>;
+  preview?: ToolDisplayPreview;
+}
+
 export interface ToolExecutionResult {
   output: string;
   error?: string;
+  display?: ToolDisplay;
 }
 
 export interface Tool {

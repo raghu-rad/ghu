@@ -1,7 +1,7 @@
 import type { AgentConfig } from '../config/index.js';
 import type { LLMClient, LLMMessage, LLMResponse, LLMToolCall } from '../llm/index.js';
 import { PromptBuilder } from '../prompt/builder.js';
-import { ToolRegistry } from '../tools/index.js';
+import { ToolRegistry, type ToolDisplay } from '../tools/index.js';
 
 export interface AgentOptions {
   config: AgentConfig;
@@ -13,9 +13,14 @@ export interface AgentOptions {
 
 export interface AgentTurnResult {
   assistant?: LLMMessage;
-  toolMessages?: LLMMessage[];
+  toolMessages?: AgentToolMessage[];
   error?: string;
   exhaustedIterations?: boolean;
+}
+
+export interface AgentToolMessage {
+  message: LLMMessage;
+  display?: ToolDisplay;
 }
 
 export class Agent {
@@ -41,7 +46,7 @@ export class Agent {
   async processUserMessage(userInput: string): Promise<AgentTurnResult> {
     this.history.push({ role: 'user', content: userInput });
 
-    const toolMessages: LLMMessage[] = [];
+    const toolMessages: AgentToolMessage[] = [];
 
     for (let iteration = 0; iteration < this.maxIterations; iteration += 1) {
       const messages = this.promptBuilder.build({
@@ -91,7 +96,7 @@ export class Agent {
     };
   }
 
-  private async executeTool(toolCall: LLMToolCall): Promise<LLMMessage> {
+  private async executeTool(toolCall: LLMToolCall): Promise<AgentToolMessage> {
     const tool = this.toolRegistry.get(toolCall.name);
 
     if (!tool) {
@@ -102,7 +107,7 @@ export class Agent {
         toolCallId: toolCall.id,
       };
       this.history.push(missingToolMessage);
-      return missingToolMessage;
+      return { message: missingToolMessage };
     }
 
     try {
@@ -117,9 +122,13 @@ export class Agent {
       };
 
       this.history.push(message);
-      return message;
+      return {
+        message,
+        display: result.display,
+      };
     } catch (error) {
-      const messageContent = error instanceof Error ? error.message : 'Unknown tool execution error';
+      const messageContent =
+        error instanceof Error ? error.message : 'Unknown tool execution error';
       const message: LLMMessage = {
         role: 'tool',
         name: tool.name,
@@ -127,7 +136,14 @@ export class Agent {
         toolCallId: toolCall.id,
       };
       this.history.push(message);
-      return message;
+      return {
+        message,
+        display: {
+          message: `Tool execution failed: ${tool.name}`,
+          tone: 'error',
+          details: messageContent,
+        },
+      };
     }
   }
 }

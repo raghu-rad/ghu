@@ -24,7 +24,10 @@ export function loadConfig(): AgentConfig {
   const model = process.env.GHU_MODEL ?? (provider === 'deepseek' ? 'deepseek-chat' : 'mock-alpha');
   const systemPrompt = process.env.GHU_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
   const apiKey = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : undefined;
-  const baseUrl = provider === 'deepseek' ? process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com' : undefined;
+  const baseUrl =
+    provider === 'deepseek'
+      ? (process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com')
+      : undefined;
 
   return {
     provider,

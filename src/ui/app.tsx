@@ -4,11 +4,12 @@ import TextInput from 'ink-text-input';
 
 import type { Agent } from '../agent/index.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
+import type { ToolDisplay, ToolDisplayPreview, ToolDisplayTone } from '../tools/index.js';
 
 type ConversationItem =
   | { id: string; role: 'user'; content: string }
   | { id: string; role: 'assistant'; content: string }
-  | { id: string; role: 'tool'; name: string; content: string }
+  | { id: string; role: 'tool'; name: string; content: string; display?: ToolDisplay }
   | { id: string; role: 'error'; content: string };
 
 const uid = (() => {
@@ -93,11 +94,12 @@ export function App({ agent }: AppProps) {
         }
 
         if (result.toolMessages?.length) {
-          const toolItems = result.toolMessages.map<ConversationItem>((message) => ({
+          const toolItems = result.toolMessages.map<ConversationItem>(({ message, display }) => ({
             id: uid(),
             role: 'tool',
             name: message.name ?? 'tool',
             content: message.content,
+            display,
           }));
           appendItems(toolItems);
         }
@@ -171,16 +173,110 @@ function ConversationLine({ item, width }: ConversationLineProps) {
       );
     }
     case 'tool':
-      return (
-        <Box flexDirection="column">
-          <Text color="magenta">{`tool:${item.name}`}</Text>
-          <Text>{item.content}</Text>
-        </Box>
-      );
+      return <ToolConversationLine item={item} />;
     case 'error':
     default:
       return <Text color="red">{item.content}</Text>;
   }
+}
+
+interface ToolConversationLineProps {
+  item: Extract<ConversationItem, { role: 'tool' }>;
+}
+
+function ToolConversationLine({ item }: ToolConversationLineProps) {
+  const toolName = formatToolName(item.name);
+  const command = getMetadataString(item.display?.metadata, 'command');
+  const summary = item.display?.message ?? item.content;
+  const hasSummary = summary.trim().length > 0;
+  const summaryColor = resolveToneColor(item.display?.tone);
+  const detailColor = item.display?.tone === 'error' ? 'red' : 'gray';
+  const preview = item.display?.preview;
+
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color="magenta">{toolName}</Text>
+        {command ? (
+          <Text color="cyan">{`  $ ${command}`}</Text>
+        ) : null}
+      </Box>
+      {preview ? <ToolPreview preview={preview} /> : null}
+      {hasSummary ? (
+        <Box marginLeft={2}>
+          <Text color={summaryColor}>{summary}</Text>
+        </Box>
+      ) : null}
+      {item.display?.details ? (
+        <Box marginLeft={2}>
+          <Text color={detailColor}>{item.display.details}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function resolveToneColor(tone: ToolDisplayTone | undefined): string {
+  switch (tone) {
+    case 'success':
+      return 'green';
+    case 'warning':
+      return 'yellow';
+    case 'error':
+      return 'red';
+    case 'info':
+    default:
+      return 'white';
+  }
+}
+
+function formatToolName(name: string): string {
+  if (!name) {
+    return 'unknown';
+  }
+
+  return name
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+interface ToolPreviewProps {
+  preview: ToolDisplayPreview;
+}
+
+function ToolPreview({ preview }: ToolPreviewProps) {
+  if (!preview.lines.length) {
+    return null;
+  }
+
+  const hasEllipsisLine = preview.lines.some((line) => line.trim() === '…');
+
+  return (
+    <Box marginLeft={2} flexDirection="column">
+      {preview.lines.map((line, index) => (
+        <Text key={index} color="white">
+          {line}
+        </Text>
+      ))}
+      {preview.truncated && !hasEllipsisLine ? <Text color="white">…</Text> : null}
+    </Box>
+  );
+}
+
+function getMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const value = metadata[key];
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 interface ThinkingIndicatorProps {
