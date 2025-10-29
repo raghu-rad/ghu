@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useStdout } from 'ink';
 import TextInput from 'ink-text-input';
 
-import type { Agent } from '../agent/index.js';
+import type { Agent, AgentToolMessage } from '../agent/index.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
 import type { ToolDisplay, ToolDisplayPreview, ToolDisplayTone } from '../tools/index.js';
 
@@ -33,6 +33,7 @@ export function App({ agent }: AppProps) {
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [isProcessing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const streamedToolMessages = useRef(false);
 
   const appendItems = useCallback((items: ConversationItem[]) => {
     setConversation((current) => [...current, ...items]);
@@ -67,6 +68,22 @@ export function App({ agent }: AppProps) {
     [agent, exit],
   );
 
+  const handleStreamedToolMessage = useCallback(
+    ({ message, display }: AgentToolMessage) => {
+      streamedToolMessages.current = true;
+      appendItems([
+        {
+          id: uid(),
+          role: 'tool',
+          name: message.name ?? 'tool',
+          content: message.content,
+          display,
+        },
+      ]);
+    },
+    [appendItems, streamedToolMessages],
+  );
+
   const handleSubmit = useCallback(
     async (value: string) => {
       const trimmed = value.trim();
@@ -84,16 +101,19 @@ export function App({ agent }: AppProps) {
       setStatusMessage(null);
       setInput('');
 
+      streamedToolMessages.current = false;
       appendItems([{ id: uid(), role: 'user', content: trimmed }]);
 
       try {
-        const result = await agent.processUserMessage(trimmed);
+        const result = await agent.processUserMessage(trimmed, {
+          onToolMessage: handleStreamedToolMessage,
+        });
 
         if (result.error) {
           appendItems([{ id: uid(), role: 'error', content: result.error }]);
         }
 
-        if (result.toolMessages?.length) {
+        if (!streamedToolMessages.current && result.toolMessages?.length) {
           const toolItems = result.toolMessages.map<ConversationItem>(({ message, display }) => ({
             id: uid(),
             role: 'tool',

@@ -1,2 +1,2 @@
-export type { AgentOptions } from './loop.js';
+export type { AgentOptions, AgentToolMessage, ProcessUserMessageOptions } from './loop.js';
 export { Agent } from './loop.js';

@@ -23,6 +23,10 @@ export interface AgentToolMessage {
   display?: ToolDisplay;
 }
 
+export interface ProcessUserMessageOptions {
+  onToolMessage?: (message: AgentToolMessage) => void;
+}
+
 export class Agent {
   private readonly promptBuilder: PromptBuilder;
   private readonly history: LLMMessage[] = [];
@@ -43,7 +47,10 @@ export class Agent {
     return this.history;
   }
 
-  async processUserMessage(userInput: string): Promise<AgentTurnResult> {
+  async processUserMessage(
+    userInput: string,
+    options?: ProcessUserMessageOptions,
+  ): Promise<AgentTurnResult> {
     this.history.push({ role: 'user', content: userInput });
 
     const toolMessages: AgentToolMessage[] = [];
@@ -86,6 +93,7 @@ export class Agent {
       for (const toolCall of toolCalls) {
         const toolMessage = await this.executeTool(toolCall);
         toolMessages.push(toolMessage);
+        options?.onToolMessage?.(toolMessage);
       }
     }
 
