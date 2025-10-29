@@ -51,15 +51,25 @@ export class ToolRegistry {
   }
 }
 
+import { ReadFileTool, type ReadFileToolOptions } from './read-file.js';
 import { ShellTool, type ShellToolOptions } from './shell.js';
+
+export { ReadFileTool } from './read-file.js';
+export type { ReadFileToolOptions } from './read-file.js';
 
 export interface ToolRegistryOptions {
   includeShell?: boolean;
   shell?: ShellToolOptions;
+  includeReadFile?: boolean;
+  readFile?: ReadFileToolOptions;
 }
 
 export function createDefaultToolRegistry(options: ToolRegistryOptions = {}): ToolRegistry {
   const registry = new ToolRegistry();
+
+  if (options.includeReadFile ?? true) {
+    registry.register(new ReadFileTool(options.readFile));
+  }
 
   if (options.includeShell ?? true) {
     registry.register(new ShellTool(options.shell));

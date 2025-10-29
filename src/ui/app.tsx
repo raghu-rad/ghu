@@ -186,19 +186,19 @@ interface ToolConversationLineProps {
 
 function ToolConversationLine({ item }: ToolConversationLineProps) {
   const toolName = formatToolName(item.name);
-  const command = getMetadataString(item.display?.metadata, 'command');
   const summary = item.display?.message ?? item.content;
   const hasSummary = summary.trim().length > 0;
   const summaryColor = resolveToneColor(item.display?.tone);
   const detailColor = item.display?.tone === 'error' ? 'red' : 'gray';
   const preview = item.display?.preview;
+  const metadataEntries = formatMetadataEntries(item.display?.metadata);
 
   return (
     <Box flexDirection="column">
       <Box>
         <Text color="magenta">{toolName}</Text>
-        {command ? (
-          <Text color="cyan">{`  $ ${command}`}</Text>
+        {metadataEntries.length ? (
+          <Text color="gray">{`  ${metadataEntries.join('  ')}`}</Text>
         ) : null}
       </Box>
       {preview ? <ToolPreview preview={preview} /> : null}
@@ -265,18 +265,48 @@ function ToolPreview({ preview }: ToolPreviewProps) {
   );
 }
 
-function getMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+function formatMetadataEntries(metadata: Record<string, unknown> | undefined): string[] {
   if (!metadata) {
-    return undefined;
+    return [];
   }
 
-  const value = metadata[key];
-  if (typeof value !== 'string') {
-    return undefined;
+  const formatted: string[] = [];
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    const normalizedValue = normalizeMetadataValue(value);
+    if (normalizedValue === undefined) {
+      continue;
+    }
+
+    if (key === 'command' || key === 'path') {
+      formatted.push(normalizedValue);
+    } else {
+      formatted.push(`${key}=${normalizedValue}`);
+    }
   }
 
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return formatted;
+}
+
+function normalizeMetadataValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return undefined;
 }
 
 interface ThinkingIndicatorProps {
