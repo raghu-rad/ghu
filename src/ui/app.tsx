@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useStdout } from 'ink';
-import TextInput from 'ink-text-input';
 
 import type { Agent, AgentToolMessage } from '../agent/index.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
 import type { ToolDisplay, ToolDisplayPreview, ToolDisplayTone } from '../tools/index.js';
+import { MultilineTextInput } from './components/multiline-text-input.js';
 
 type ConversationItem =
   | { id: string; role: 'user'; content: string }
@@ -86,8 +86,14 @@ export function App({ agent }: AppProps) {
 
   const handleSubmit = useCallback(
     async (value: string) => {
-      const trimmed = value.trim();
-      if (trimmed.length === 0 || isProcessing) {
+      if (isProcessing) {
+        return;
+      }
+
+      const normalized = value.replace(/\r\n?/g, '\n');
+      const trimmed = normalized.trim();
+
+      if (trimmed.length === 0) {
         return;
       }
 
@@ -102,10 +108,10 @@ export function App({ agent }: AppProps) {
       setInput('');
 
       streamedToolMessages.current = false;
-      appendItems([{ id: uid(), role: 'user', content: trimmed }]);
+      appendItems([{ id: uid(), role: 'user', content: normalized }]);
 
       try {
-        const result = await agent.processUserMessage(trimmed, {
+        const result = await agent.processUserMessage(normalized, {
           onToolMessage: handleStreamedToolMessage,
         });
 
@@ -167,7 +173,11 @@ export function App({ agent }: AppProps) {
 
       <Box marginTop={1}>
         <Text color="cyan">› </Text>
-        <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} />
+        <MultilineTextInput
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+        />
       </Box>
     </Box>
   );
@@ -185,7 +195,7 @@ function ConversationLine({ item, width }: ConversationLineProps) {
     case 'assistant': {
       const rendered = formatMarkdown(item.content).split('\n');
       return (
-        <Box borderStyle="round" borderColor="blue" padding={1} flexDirection="column">
+        <Box flexDirection="column">
           {rendered.map((line, index) => (
             <Text key={index}>{line}</Text>
           ))}
