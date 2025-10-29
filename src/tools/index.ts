@@ -52,21 +52,21 @@ export class ToolRegistry {
 }
 
 import { ReadFileTool, type ReadFileToolOptions } from './read-file.js';
-import { ReadManyFilesTool, type ReadManyFilesToolOptions } from './read-many-files.js';
+import { ReadFilesTool, type ReadFilesToolOptions } from './read-files.js';
 import { ShellTool, type ShellToolOptions } from './shell.js';
 
 export { ReadFileTool } from './read-file.js';
 export type { ReadFileToolOptions } from './read-file.js';
-export { ReadManyFilesTool } from './read-many-files.js';
-export type { ReadManyFilesToolOptions } from './read-many-files.js';
+export { ReadFilesTool } from './read-files.js';
+export type { ReadFilesToolOptions } from './read-files.js';
 
 export interface ToolRegistryOptions {
   includeShell?: boolean;
   shell?: ShellToolOptions;
   includeReadFile?: boolean;
   readFile?: ReadFileToolOptions;
-  includeReadManyFiles?: boolean;
-  readManyFiles?: ReadManyFilesToolOptions;
+  includeReadFiles?: boolean;
+  readFiles?: ReadFilesToolOptions;
 }
 
 export function createDefaultToolRegistry(options: ToolRegistryOptions = {}): ToolRegistry {
@@ -76,8 +76,8 @@ export function createDefaultToolRegistry(options: ToolRegistryOptions = {}): To
     registry.register(new ReadFileTool(options.readFile));
   }
 
-  if (options.includeReadManyFiles ?? true) {
-    registry.register(new ReadManyFilesTool(options.readManyFiles));
+  if (options.includeReadFiles ?? true) {
+    registry.register(new ReadFilesTool(options.readFiles));
   }
 
   if (options.includeShell ?? true) {
