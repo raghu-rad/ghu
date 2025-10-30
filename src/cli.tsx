@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     llmClient,
     promptBuilder: new PromptBuilder(),
     toolRegistry,
-    maxIterations: 10,
+    maxIterations: 30,
   });
 
   const leaveAlternateScreen = enterAlternateScreen();

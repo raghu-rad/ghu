@@ -3,8 +3,12 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import type { Agent, AgentToolMessage } from '../agent/index.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
-import type { ToolDisplay, ToolDisplayPreview, ToolDisplayTone } from '../tools/index.js';
-import type { ShellCommandRiskLevel, ShellToolApprovalScope } from '../tools/shell-approvals.js';
+import type {
+  ToolDisplay,
+  ToolDisplayPreview,
+  ToolDisplayPreviewLine,
+  ToolDisplayTone,
+} from '../tools/index.js';
 import { MultilineTextInput } from './components/multiline-text-input.js';
 import { InteractiveApprovalProvider } from './interactive-approval-provider.js';
 
@@ -452,13 +456,41 @@ function ToolPreview({ preview }: ToolPreviewProps) {
     return null;
   }
 
-  const hasEllipsisLine = preview.lines.some((line) => line.trim() === '…');
+  const isEllipsisLine = (line: string | ToolDisplayPreviewLine): boolean => {
+    if (typeof line === 'string') {
+      return line.trim() === '…';
+    }
+    return line.text.trim() === '…';
+  };
+
+  const resolveText = (line: string | ToolDisplayPreviewLine): string => {
+    return typeof line === 'string' ? line : line.text;
+  };
+
+  const resolveColor = (line: string | ToolDisplayPreviewLine): string => {
+    if (typeof line === 'string') {
+      return 'white';
+    }
+
+    switch (line.tone) {
+      case 'addition':
+        return 'green';
+      case 'deletion':
+        return 'red';
+      case 'info':
+        return 'cyan';
+      default:
+        return 'white';
+    }
+  };
+
+  const hasEllipsisLine = preview.lines.some(isEllipsisLine);
 
   return (
     <Box marginLeft={2} flexDirection="column">
       {preview.lines.map((line, index) => (
-        <Text key={index} color="white">
-          {line}
+        <Text key={index} color={resolveColor(line)}>
+          {resolveText(line)}
         </Text>
       ))}
       {preview.truncated && !hasEllipsisLine ? <Text color="white">…</Text> : null}

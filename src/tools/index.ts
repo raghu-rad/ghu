@@ -4,8 +4,15 @@ export interface ToolInput {
 
 export type ToolDisplayTone = 'info' | 'success' | 'warning' | 'error';
 
+export type ToolDisplayPreviewLineTone = 'addition' | 'deletion' | 'info';
+
+export interface ToolDisplayPreviewLine {
+  text: string;
+  tone?: ToolDisplayPreviewLineTone;
+}
+
 export interface ToolDisplayPreview {
-  lines: string[];
+  lines: Array<string | ToolDisplayPreviewLine>;
   truncated?: boolean;
   label?: string;
 }
@@ -53,12 +60,15 @@ export class ToolRegistry {
 
 import { ReadFileTool, type ReadFileToolOptions } from './read-file.js';
 import { ReadFilesTool, type ReadFilesToolOptions } from './read-files.js';
+import { WriteFileTool, type WriteFileToolOptions } from './write-file.js';
 import { ShellTool, type ShellToolOptions } from './shell.js';
 
 export { ReadFileTool } from './read-file.js';
 export type { ReadFileToolOptions } from './read-file.js';
 export { ReadFilesTool } from './read-files.js';
 export type { ReadFilesToolOptions } from './read-files.js';
+export { WriteFileTool } from './write-file.js';
+export type { WriteFileToolOptions } from './write-file.js';
 
 export interface ToolRegistryOptions {
   includeShell?: boolean;
@@ -67,6 +77,8 @@ export interface ToolRegistryOptions {
   readFile?: ReadFileToolOptions;
   includeReadFiles?: boolean;
   readFiles?: ReadFilesToolOptions;
+  includeWriteFile?: boolean;
+  writeFile?: WriteFileToolOptions;
 }
 
 export function createDefaultToolRegistry(options: ToolRegistryOptions = {}): ToolRegistry {
@@ -78,6 +90,10 @@ export function createDefaultToolRegistry(options: ToolRegistryOptions = {}): To
 
   if (options.includeReadFiles ?? true) {
     registry.register(new ReadFilesTool(options.readFiles));
+  }
+
+  if (options.includeWriteFile ?? true) {
+    registry.register(new WriteFileTool(options.writeFile));
   }
 
   if (options.includeShell ?? true) {
