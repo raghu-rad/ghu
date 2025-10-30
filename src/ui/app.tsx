@@ -1,15 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useApp, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import type { Agent, AgentToolMessage } from '../agent/index.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
 import type { ToolDisplay, ToolDisplayPreview, ToolDisplayTone } from '../tools/index.js';
+import type { ShellCommandRiskLevel, ShellToolApprovalScope } from '../tools/shell-approvals.js';
 import { MultilineTextInput } from './components/multiline-text-input.js';
+import { InteractiveApprovalProvider } from './interactive-approval-provider.js';
 
 type ConversationItem =
   | { id: string; role: 'user'; content: string }
   | { id: string; role: 'assistant'; content: string }
   | { id: string; role: 'tool'; name: string; content: string; display?: ToolDisplay }
+  | { id: string; role: 'banner'; content: string }
+  | {
+      id: string;
+      role: 'approval';
+      requestId: string;
+      command: string;
+      risk: ShellCommandRiskLevel;
+      reasons: string[];
+      status: 'pending' | 'approved' | 'denied';
+      scope?: ShellToolApprovalScope;
+      message?: string;
+    }
   | { id: string; role: 'error'; content: string };
 
 const uid = (() => {
@@ -22,9 +36,10 @@ const uid = (() => {
 
 interface AppProps {
   agent: Agent;
+  approvalProvider: InteractiveApprovalProvider;
 }
 
-export function App({ agent }: AppProps) {
+export function App({ agent, approvalProvider }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const columns = useMemo(() => stdout?.columns ?? 80, [stdout?.columns]);
@@ -34,6 +49,7 @@ export function App({ agent }: AppProps) {
   const [isProcessing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const streamedToolMessages = useRef(false);
+  const [pendingApprovals, setPendingApprovals] = useState<string[]>([]);
 
   const appendItems = useCallback((items: ConversationItem[]) => {
     setConversation((current) => [...current, ...items]);
@@ -43,11 +59,70 @@ export function App({ agent }: AppProps) {
     setConversation([
       {
         id: uid(),
-        role: 'assistant',
+        role: 'banner',
         content: 'Ghu is ready. Type /exit to quit, /reset to clear the conversation.',
       },
     ]);
   }, []);
+
+  useEffect(() => {
+    const disposeRequest = approvalProvider.onRequest((event) => {
+      setPendingApprovals((current) => [...current, event.id]);
+      setConversation((current) => [
+        ...current,
+        {
+          id: uid(),
+          role: 'approval',
+          requestId: event.id,
+          command: event.request.command,
+          risk: event.request.analysis.risk.level,
+          reasons: event.request.analysis.risk.reasons,
+          status: 'pending',
+        },
+      ]);
+
+      setStatusMessage(
+        `Approval needed for ${event.id}. Press 1 (allow once), 2 (allow session), or 3 (deny).`,
+      );
+    });
+
+    const disposeResolved = approvalProvider.onResolved((event) => {
+      setPendingApprovals((current) => current.filter((id) => id !== event.id));
+      setConversation((current) =>
+        current.filter((item) => !(item.role === 'approval' && item.requestId === event.id)),
+      );
+
+      if (event.result.decision === 'allow') {
+        setStatusMessage(null);
+      } else {
+        setStatusMessage(event.result.reason ?? `Denied ${event.id}.`);
+      }
+    });
+
+    return () => {
+      disposeRequest();
+      disposeResolved();
+    };
+  }, [approvalProvider]);
+
+  useInput(
+    (input) => {
+      if (!pendingApprovals.length) {
+        return;
+      }
+
+      const requestId = pendingApprovals[0];
+
+      if (input === '1') {
+        approvalProvider.respond(requestId, { type: 'allow', scope: 'once' });
+      } else if (input === '2') {
+        approvalProvider.respond(requestId, { type: 'allow', scope: 'session' });
+      } else if (input === '3') {
+        approvalProvider.respond(requestId, { type: 'deny' });
+      }
+    },
+    { isActive: pendingApprovals.length > 0 },
+  );
 
   const handleCommand = useCallback(
     (command: string) => {
@@ -59,13 +134,41 @@ export function App({ agent }: AppProps) {
       if (command === '/reset') {
         agent.reset();
         setConversation([]);
+        approvalProvider.cancelAll('Conversation reset.');
+        approvalProvider.resetSession();
         setStatusMessage('Conversation history cleared.');
         return;
       }
 
+      const allowAlwaysMatch = command.match(/^\/allow-always\s+(\S+)/);
+       if (allowAlwaysMatch) {
+         const [, requestId] = allowAlwaysMatch;
+         const ok = approvalProvider.respond(requestId, { type: 'allow', scope: 'session' });
+         setStatusMessage(
+           ok ? `Approved ${requestId} for this session.` : `No pending approval for ${requestId}.`,
+         );
+         return;
+       }
+
+       const allowMatch = command.match(/^\/allow\s+(\S+)/);
+       if (allowMatch) {
+         const [, requestId] = allowMatch;
+         const ok = approvalProvider.respond(requestId, { type: 'allow', scope: 'once' });
+         setStatusMessage(ok ? `Approved ${requestId}.` : `No pending approval for ${requestId}.`);
+         return;
+       }
+
+       const denyMatch = command.match(/^\/deny\s+(\S+)/);
+       if (denyMatch) {
+         const [, requestId] = denyMatch;
+         const ok = approvalProvider.respond(requestId, { type: 'deny' });
+         setStatusMessage(ok ? `Denied ${requestId}.` : `No pending approval for ${requestId}.`);
+         return;
+       }
+
       setStatusMessage(`Unknown command: ${command}`);
     },
-    [agent, exit],
+    [agent, approvalProvider, exit],
   );
 
   const handleStreamedToolMessage = useCallback(
@@ -177,6 +280,7 @@ export function App({ agent }: AppProps) {
           value={input}
           onChange={setInput}
           onSubmit={handleSubmit}
+          focus={pendingApprovals.length === 0}
         />
       </Box>
     </Box>
@@ -202,8 +306,12 @@ function ConversationLine({ item, width }: ConversationLineProps) {
         </Box>
       );
     }
+    case 'banner':
+      return <BannerConversationLine text={item.content} />;
     case 'tool':
       return <ToolConversationLine item={item} />;
+    case 'approval':
+      return <ApprovalConversationLine item={item} />;
     case 'error':
     default:
       return <Text color="red">{item.content}</Text>;
@@ -212,6 +320,25 @@ function ConversationLine({ item, width }: ConversationLineProps) {
 
 interface ToolConversationLineProps {
   item: Extract<ConversationItem, { role: 'tool' }>;
+}
+
+interface BannerConversationLineProps {
+  text: string;
+}
+
+function BannerConversationLine({ text }: BannerConversationLineProps) {
+  return (
+    <Box
+      borderStyle="round"
+      borderColor="blue"
+      paddingX={1}
+      paddingY={0}
+      flexBasis="100%"
+      justifyContent="center"
+    >
+      <Text color="blue">{text}</Text>
+    </Box>
+  );
 }
 
 function ToolConversationLine({ item }: ToolConversationLineProps) {
@@ -246,6 +373,38 @@ function ToolConversationLine({ item }: ToolConversationLineProps) {
   );
 }
 
+interface ApprovalConversationLineProps {
+  item: Extract<ConversationItem, { role: 'approval' }>;
+}
+
+function ApprovalConversationLine({ item }: ApprovalConversationLineProps) {
+  const statusColor = resolveApprovalStatusColor(item.status);
+  const reasonsText = item.reasons.length ? ` (${item.reasons.join(', ')})` : '';
+  const scopeHint =
+    item.scope === 'session' ? ' (session)' : item.scope === 'once' ? ' (once)' : '';
+
+  return (
+    <Box flexDirection="column">
+      <Text color="magenta">{`Approval ${item.requestId}`}</Text>
+      <Box marginLeft={2} flexDirection="column">
+        <Text color="white">{item.command}</Text>
+        <Text color="gray">{`risk=${item.risk}${reasonsText}`}</Text>
+        <Text color={statusColor}>{`${item.status.toUpperCase()}${scopeHint}`}</Text>
+        {item.message ? <Text color="gray">{item.message}</Text> : null}
+        {item.status === 'pending' ? (
+          <Box flexDirection="column">
+            <Text color="gray">Choose an option:</Text>
+            <Text color="gray">{' 1. Allow once'}</Text>
+            <Text color="gray">{' 2. Allow for this session'}</Text>
+            <Text color="gray">{' 3. Deny'}</Text>
+            <Text color="gray">{`Commands: /allow ${item.requestId}, /allow-always ${item.requestId}, /deny ${item.requestId}`}</Text>
+          </Box>
+        ) : null}
+      </Box>
+    </Box>
+  );
+}
+
 function resolveToneColor(tone: ToolDisplayTone | undefined): string {
   switch (tone) {
     case 'success':
@@ -257,6 +416,18 @@ function resolveToneColor(tone: ToolDisplayTone | undefined): string {
     case 'info':
     default:
       return 'white';
+  }
+}
+
+function resolveApprovalStatusColor(status: 'pending' | 'approved' | 'denied'): string {
+  switch (status) {
+    case 'approved':
+      return 'green';
+    case 'denied':
+      return 'red';
+    case 'pending':
+    default:
+      return 'yellow';
   }
 }
 
