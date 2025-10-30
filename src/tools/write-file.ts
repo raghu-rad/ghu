@@ -47,6 +47,7 @@ interface RecordedChange {
 }
 
 interface ErrorResultDetails {
+  ok: false;
   message: string;
   details?: Record<string, unknown>;
 }
@@ -380,12 +381,14 @@ export class WriteFileTool implements Tool {
 
     if (startIndex < 0 || startIndex >= lines.length) {
       return {
+        ok: false,
         message: `Delete operation targets line ${line}, but the file only has ${lines.length} line(s).`,
       };
     }
 
     if (count > lines.length - startIndex) {
       return {
+        ok: false,
         message: `Delete operation removes ${count} line(s) from ${line}, but only ${lines.length - startIndex} line(s) are available.`,
       };
     }
