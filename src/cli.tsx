@@ -9,6 +9,7 @@ import { createLLMClient } from './llm/index.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { createDefaultToolRegistry } from './tools/index.js';
 import { App } from './ui/app.js';
+import { InteractiveApprovalProvider } from './ui/interactive-approval-provider.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 interface CliOptions {
@@ -41,7 +42,12 @@ async function main(): Promise<void> {
     systemPrompt: options.systemPrompt ?? baseConfig.systemPrompt,
   };
 
-  const toolRegistry = createDefaultToolRegistry();
+  const approvalProvider = new InteractiveApprovalProvider();
+  const toolRegistry = createDefaultToolRegistry({
+    shell: {
+      approvalProvider,
+    },
+  });
 
   if (options.listTools) {
     const tools = toolRegistry.list();
@@ -67,11 +73,27 @@ async function main(): Promise<void> {
     maxIterations: 30,
   });
 
-  const { waitUntilExit } = render(<App agent={agent} />);
-  await waitUntilExit();
+  const leaveAlternateScreen = enterAlternateScreen();
+  try {
+    const { waitUntilExit } = render(<App agent={agent} approvalProvider={approvalProvider} />);
+    await waitUntilExit();
+  } finally {
+    leaveAlternateScreen();
+  }
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
+
+function enterAlternateScreen(): () => void {
+  if (!process.stdout.isTTY) {
+    return () => {};
+  }
+
+  process.stdout.write('\u001b[?1049h\u001b[H');
+  return () => {
+    process.stdout.write('\u001b[?1049l');
+  };
+}
