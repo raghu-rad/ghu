@@ -1,46 +1,21 @@
-import { DeepSeekLLMClient } from './deepseek.js';
-import { MockLLMClient } from './mock.js';
+import { OpenAICompatibleLLMClient } from './clients/openai-compatible.js';
+import { MockLLMClient } from './clients/mock.js';
+import type { LLMClient } from './types.js';
 
-export type LLMRole = 'system' | 'user' | 'assistant' | 'tool';
-
-export interface LLMToolCall {
-  id?: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface LLMMessage {
-  role: LLMRole;
-  content: string;
-  name?: string;
-  toolCalls?: LLMToolCall[];
-  toolCallId?: string;
-}
-
-export interface ToolSpecification {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-}
-
-export interface GenerateOptions {
-  temperature?: number;
-  maxTokens?: number;
-  tools?: ToolSpecification[];
-}
-
-export interface LLMResponse {
-  message: LLMMessage;
-  toolCalls?: LLMToolCall[];
-}
-
-export interface LLMClient {
-  generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMResponse>;
-}
+export type {
+  GenerateOptions,
+  LLMClient,
+  LLMMessage,
+  LLMResponse,
+  LLMRole,
+  LLMToolCall,
+  ToolSpecification,
+} from './types.js';
 
 export interface CreateLLMClientOptions {
   apiKey?: string;
   baseUrl?: string;
+  providerName?: string;
 }
 
 export function createLLMClient(
@@ -52,10 +27,18 @@ export function createLLMClient(
     case 'mock':
       return new MockLLMClient(model);
     case 'deepseek':
-      return new DeepSeekLLMClient({
+      return new OpenAICompatibleLLMClient({
         model,
         apiKey: options.apiKey,
         baseUrl: options.baseUrl,
+        providerName: options.providerName ?? 'DeepSeek',
+      });
+    case 'openai':
+      return new OpenAICompatibleLLMClient({
+        model,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        providerName: options.providerName ?? 'OpenAI',
       });
     default:
       throw new Error(`Unsupported provider: ${provider}`);

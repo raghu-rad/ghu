@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import React from 'react';
 import { Command } from 'commander';
 import { render } from 'ink';
@@ -6,6 +5,8 @@ import { render } from 'ink';
 import { Agent } from './agent/index.js';
 import { loadConfig } from './config/index.js';
 import { createLLMClient } from './llm/index.js';
+import { ModelController } from './llm/routing/model-controller.js';
+import { resolveModel } from './llm/routing/model-routing.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { createDefaultToolRegistry } from './tools/index.js';
 import { App } from './ui/app.js';
@@ -37,15 +38,27 @@ async function main(): Promise<void> {
   const baseConfig = loadConfig();
   const config = {
     ...baseConfig,
-    provider: options.provider ?? baseConfig.provider,
-    model: options.model ?? baseConfig.model,
     systemPrompt: options.systemPrompt ?? baseConfig.systemPrompt,
   };
+
+  const initializationWarnings: string[] = [];
+  let providerLabel = baseConfig.providerLabel;
+
+  if (options.model) {
+    const resolvedOverride = resolveModel(options.model, { requireCredentials: false });
+    config.provider = resolvedOverride.provider;
+    config.model = resolvedOverride.model;
+    config.apiKey = resolvedOverride.apiKey;
+    config.baseUrl = resolvedOverride.baseUrl;
+    providerLabel = resolvedOverride.providerLabel;
+  }
+  config.providerLabel = providerLabel;
 
   const approvalProvider = new InteractiveApprovalProvider();
   const toolRegistry = createDefaultToolRegistry({
     shell: {
       approvalProvider,
+      timeoutMs: 2 * 60 * 1000,
     },
   });
 
@@ -61,21 +74,51 @@ async function main(): Promise<void> {
     return;
   }
 
-  const llmClient = createLLMClient(config.provider, config.model, {
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-  });
+  let llmClient;
+  try {
+    llmClient = createLLMClient(config.provider, config.model, {
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      providerName: providerLabel,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!options.model && message.includes('_API_KEY')) {
+      initializationWarnings.push(
+        `${message} Starting with mock-alpha until you configure credentials. Use /model to switch providers.`,
+      );
+      config.provider = 'mock';
+      config.providerLabel = 'Mock';
+      config.model = 'mock-alpha';
+      config.apiKey = undefined;
+      config.baseUrl = undefined;
+      providerLabel = 'Mock';
+      llmClient = createLLMClient(config.provider, config.model, {
+        providerName: providerLabel,
+      });
+    } else {
+      throw error;
+    }
+  }
   const agent = new Agent({
     config,
     llmClient,
     promptBuilder: new PromptBuilder(),
     toolRegistry,
-    maxIterations: 30,
+    maxIterations: 100,
   });
+  const modelController = new ModelController(agent);
 
   const leaveAlternateScreen = enterAlternateScreen();
   try {
-    const { waitUntilExit } = render(<App agent={agent} approvalProvider={approvalProvider} />);
+    const { waitUntilExit } = render(
+      <App
+        agent={agent}
+        approvalProvider={approvalProvider}
+        modelController={modelController}
+        initializationWarnings={initializationWarnings}
+      />,
+    );
     await waitUntilExit();
   } finally {
     leaveAlternateScreen();

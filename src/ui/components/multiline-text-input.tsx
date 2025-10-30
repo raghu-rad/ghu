@@ -107,10 +107,16 @@ export function MultilineTextInput({
 
     let index = 0;
     for (const char of value) {
-      renderedValue +=
-        index >= cursorOffset - cursorActualWidth && index <= cursorOffset
-          ? chalk.inverse(char)
-          : char;
+      const isHighlighted =
+        index >= cursorOffset - cursorActualWidth && index <= cursorOffset;
+
+      if (isHighlighted) {
+        // Highlighted newlines need a visible cell; draw a highlighted space before the break.
+        renderedValue += char === '\n' ? `${chalk.inverse(' ')}\n` : chalk.inverse(char);
+      } else {
+        renderedValue += char;
+      }
+
       index += 1;
     }
 
@@ -268,4 +274,3 @@ export function UncontrolledMultilineTextInput({
   const [value, setValue] = useState(initialValue);
   return <MultilineTextInput {...props} value={value} onChange={setValue} />;
 }
-

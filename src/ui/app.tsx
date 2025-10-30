@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import type { Agent, AgentToolMessage } from '../agent/index.js';
+import { ModelController } from '../llm/routing/model-controller.js';
 import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
 import type {
   ToolDisplay,
@@ -38,12 +39,21 @@ const uid = (() => {
   };
 })();
 
+const EMPTY_WARNINGS: readonly string[] = [];
+
 interface AppProps {
   agent: Agent;
   approvalProvider: InteractiveApprovalProvider;
+  modelController: ModelController;
+  initializationWarnings?: string[];
 }
 
-export function App({ agent, approvalProvider }: AppProps) {
+export function App({
+  agent,
+  approvalProvider,
+  modelController,
+  initializationWarnings = [],
+}: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const columns = useMemo(() => stdout?.columns ?? 80, [stdout?.columns]);
@@ -59,15 +69,37 @@ export function App({ agent, approvalProvider }: AppProps) {
     setConversation((current) => [...current, ...items]);
   }, []);
 
+  const warnings = initializationWarnings ?? EMPTY_WARNINGS;
+
   useEffect(() => {
-    setConversation([
+    const currentModel = modelController.getCurrent();
+    const providerDisplay = currentModel.providerLabel ?? currentModel.provider;
+    const initialItems: ConversationItem[] = [
       {
         id: uid(),
         role: 'banner',
-        content: 'Ghu is ready. Type /exit to quit, /reset to clear the conversation.',
+        content:
+          'Ghu is ready. Commands: /exit to quit, /reset to clear, /model to manage models.',
       },
-    ]);
-  }, []);
+      {
+        id: uid(),
+        role: 'banner',
+        content: `Active model: ${providerDisplay} "${currentModel.model}". Use "/model provider/model" to switch or "/model list" to view presets.`,
+      },
+    ];
+
+    if (warnings.length > 0) {
+      warnings.forEach((warning) => {
+        initialItems.push({
+          id: uid(),
+          role: 'error',
+          content: warning,
+        });
+      });
+    }
+
+    setConversation(initialItems);
+  }, [modelController, warnings]);
 
   useEffect(() => {
     const disposeRequest = approvalProvider.onRequest((event) => {
@@ -144,6 +176,64 @@ export function App({ agent, approvalProvider }: AppProps) {
         return;
       }
 
+      if (command === '/model') {
+        const current = modelController.getCurrent();
+        const providerDisplay = current.providerLabel ?? current.provider;
+        setStatusMessage(
+          `Active model: ${providerDisplay} "${current.model}". Use "/model provider/model" to switch or "/model list" to view presets.`,
+        );
+        return;
+      }
+
+      if (command === '/model list') {
+        const presets = modelController.listModels();
+        if (presets.length === 0) {
+          setStatusMessage('No models are registered.');
+          return;
+        }
+
+        const listContent = presets
+          .map((preset) => {
+            const providerDisplay = preset.providerLabel ?? preset.provider;
+            const description = preset.description ? ` – ${preset.description}` : '';
+            return `${providerDisplay} "${preset.id}" (${preset.label})${description}`;
+          })
+          .join('\n');
+
+        appendItems([
+          {
+            id: uid(),
+            role: 'banner',
+            content: 'Available models:',
+          },
+          {
+            id: uid(),
+            role: 'assistant',
+            content: listContent,
+          },
+        ]);
+        setStatusMessage('Listed available models.');
+        return;
+      }
+
+      const modelMatch = command.match(/^\/model\s+(.+)/);
+      if (modelMatch) {
+        const [, identifier] = modelMatch;
+        const result = modelController.setModel(identifier.trim());
+        setStatusMessage(result.message);
+        if (result.success && result.provider && result.model) {
+          const label = result.providerLabel ?? result.provider;
+          appendItems([
+            {
+              id: uid(),
+              role: 'banner',
+              content: `Switched to ${label} model "${result.model}".`,
+            },
+          ]);
+        }
+        return;
+      }
+
       const allowAlwaysMatch = command.match(/^\/allow-always\s+(\S+)/);
        if (allowAlwaysMatch) {
          const [, requestId] = allowAlwaysMatch;
@@ -172,7 +262,7 @@ export function App({ agent, approvalProvider }: AppProps) {
 
       setStatusMessage(`Unknown command: ${command}`);
     },
-    [agent, approvalProvider, exit],
+    [agent, approvalProvider, exit, modelController, appendItems],
   );
 
   const handleStreamedToolMessage = useCallback(

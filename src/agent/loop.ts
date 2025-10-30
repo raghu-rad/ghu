@@ -43,6 +43,22 @@ export class Agent {
     this.history.length = 0;
   }
 
+  getConfig(): AgentConfig {
+    return this.options.config;
+  }
+
+  updateLLM(
+    config: Pick<AgentConfig, 'provider' | 'providerLabel' | 'model' | 'apiKey' | 'baseUrl'>,
+    llm: LLMClient,
+  ): void {
+    this.options.config.provider = config.provider;
+    this.options.config.model = config.model;
+    this.options.config.providerLabel = config.providerLabel;
+    this.options.config.apiKey = config.apiKey;
+    this.options.config.baseUrl = config.baseUrl;
+    this.options.llmClient = llm;
+  }
+
   getHistory(): readonly LLMMessage[] {
     return this.history;
   }
