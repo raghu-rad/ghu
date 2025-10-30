@@ -6,7 +6,7 @@ Ghu is a modular terminal agent CLI built with [Ink](https://github.com/vadimdem
 
 - **Interactive Terminal UI**: Built with Ink for a smooth, responsive terminal experience
 - **Tool Integration**: Extensible tool system for file operations and shell commands
-- **Provider Support**: Multiple LLM providers (Deepseek, Mock) with easy configuration
+- **Provider Support**: OpenAI-compatible backends (DeepSeek, OpenAI) plus a local mock provider
 - **Real-time Feedback**: Live previews and status updates for tool operations
 
 ## Available Tools
@@ -90,16 +90,18 @@ pnpm install
 pnpm dev
 ```
 
-The development command launches the interactive Ink interface. Type `/reset` to clear the conversation or `/exit` to quit.
+The development command launches the interactive Ink interface. Type `/reset` to clear the conversation, `/model list` to see available models, or `/exit` to quit.
 
 ## Configuration
 
 Set the following environment variables (see `.env.example` for a template):
 
-- `GHU_PROVIDER` – `mock` or `deepseek`
-- `GHU_MODEL` – optional model override
+- `GHU_MODEL` – optional initial model (defaults to `deepseek-chat`)
 - `GHU_SYSTEM_PROMPT` – optional custom system prompt
-- `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` – required when using the Deepseek provider
+- `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` – credentials for DeepSeek
+- `OPENAI_API_KEY`, `OPENAI_BASE_URL` – credentials for OpenAI
+
+Once the UI is running, use `/model provider/model` (for example `openai/gpt-5`) to switch models on the fly. If credentials are missing the app starts in mock mode and will prompt you to supply them.
 
 ## Tool Registry
 

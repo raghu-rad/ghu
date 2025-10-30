@@ -1,4 +1,4 @@
-import type { GenerateOptions, LLMClient, LLMMessage, LLMResponse } from './index.js';
+import type { GenerateOptions, LLMClient, LLMMessage, LLMResponse } from '../types.js';
 
 export class MockLLMClient implements LLMClient {
   constructor(private readonly model: string) {}
