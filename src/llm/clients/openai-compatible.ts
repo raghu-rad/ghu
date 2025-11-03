@@ -7,30 +7,35 @@ import type {
   LLMResponse,
   LLMToolCall,
   ToolSpecification,
-} from './index.js';
+} from '../types.js';
 
-export interface DeepSeekClientOptions {
+export interface OpenAICompatibleClientOptions {
   model: string;
   apiKey?: string;
   baseUrl?: string;
+  providerName: string;
 }
 
-export class DeepSeekLLMClient implements LLMClient {
+export class OpenAICompatibleLLMClient implements LLMClient {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly providerName: string;
 
-  constructor(options: DeepSeekClientOptions) {
+  constructor(options: OpenAICompatibleClientOptions) {
     if (!options.apiKey) {
-      throw new Error('DEEPSEEK_API_KEY environment variable is required for DeepSeek provider.');
+      throw new Error(
+        `${options.providerName.toUpperCase()}_API_KEY environment variable is required for ${options.providerName} provider.`,
+      );
     }
 
-    const baseURL = options.baseUrl?.replace(/\/$/, '') ?? 'https://api.deepseek.com';
+    const baseURL = options.baseUrl?.replace(/\/$/, '') ?? undefined;
 
     this.client = new OpenAI({
       apiKey: options.apiKey,
       baseURL,
     });
     this.model = options.model;
+    this.providerName = options.providerName;
   }
 
   async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMResponse> {
@@ -46,7 +51,7 @@ export class DeepSeekLLMClient implements LLMClient {
       const choice = completion.choices?.[0];
 
       if (!choice || !choice.message) {
-        throw new Error('DeepSeek API returned no completion choices.');
+        throw new Error(`${this.providerName} API returned no completion choices.`);
       }
 
       const toolCalls = choice.message.tool_calls?.map((call) => this.parseToolCall(call));
@@ -64,14 +69,14 @@ export class DeepSeekLLMClient implements LLMClient {
     } catch (error) {
       if (error instanceof OpenAI.APIError) {
         const status = error.status ?? 'unknown';
-        throw new Error(`DeepSeek API error (${status}): ${error.message}`);
+        throw new Error(`${this.providerName} API error (${status}): ${error.message}`);
       }
 
       if (error instanceof Error) {
-        throw new Error(`DeepSeek API error: ${error.message}`);
+        throw new Error(`${this.providerName} API error: ${error.message}`);
       }
 
-      throw new Error('DeepSeek API error: Unknown error');
+      throw new Error(`${this.providerName} API error: Unknown error`);
     }
   }
 

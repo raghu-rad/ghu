@@ -9,6 +9,7 @@ describe('Agent tool streaming', () => {
   it('invokes the onToolMessage callback for each executed tool', async () => {
     const config: AgentConfig = {
       provider: 'mock',
+      providerLabel: 'Mock',
       model: 'mock-model',
       systemPrompt: 'System prompt',
     };
