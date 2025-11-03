@@ -1,4 +1,4 @@
-import type { ShellSandboxOptions } from './shell-sandbox.js';
+import type { ShellSandboxOptions } from './sandbox.js';
 
 export type ShellCommandRiskLevel = 'low' | 'external';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeShellCommand } from '../../src/tools/shell-risk.js';
+import { analyzeShellCommand } from '../../src/tools/shell/risk.js';
 
 describe('analyzeShellCommand', () => {
   it('classifies local commands as low risk', () => {

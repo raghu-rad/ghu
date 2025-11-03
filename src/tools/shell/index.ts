@@ -1,16 +1,16 @@
-import type { Tool, ToolDisplayPreview, ToolExecutionResult, ToolInput } from './index.js';
+import type { Tool, ToolDisplayPreview, ToolExecutionResult, ToolInput } from '../index.js';
 import {
   type ShellCommandAnalysis,
   type ShellToolApprovalProvider,
   type ShellToolApprovalResult,
-} from './shell-approvals.js';
+} from './approvals.js';
 import {
   runSandboxedCommand,
   ShellSandboxError,
   type ShellSandboxOptions,
   type ShellSandboxResult,
-} from './shell-sandbox.js';
-import { analyzeShellCommand } from './shell-risk.js';
+} from './sandbox.js';
+import { analyzeShellCommand } from './risk.js';
 
 export interface ShellToolOptions {
   timeoutMs?: number;
@@ -58,11 +58,7 @@ function createOutputPreview(output: string | undefined): ToolDisplayPreview | u
   const headLines = meaningfulLines.slice(0, PREVIEW_HEAD_LINES).map(trimLine);
   const tailLines = meaningfulLines.slice(-PREVIEW_TAIL_LINES).map(trimLine);
 
-  const previewLines = [
-    ...headLines,
-    '…',
-    ...tailLines,
-  ];
+  const previewLines = [...headLines, '…', ...tailLines];
 
   return {
     lines: previewLines,

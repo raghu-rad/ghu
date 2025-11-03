@@ -1,4 +1,4 @@
-import type { ShellCommandAnalysis, ShellCommandRisk } from './shell-approvals.js';
+import type { ShellCommandAnalysis, ShellCommandRisk } from './approvals.js';
 
 const NETWORK_COMMANDS = new Set([
   'curl',

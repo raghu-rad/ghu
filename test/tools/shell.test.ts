@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../src/tools/shell-sandbox.js', () => {
+vi.mock('../../src/tools/shell/sandbox.js', () => {
   const runSandboxedCommand = vi.fn();
 
   class ShellSandboxError extends Error {
@@ -19,8 +19,8 @@ vi.mock('../../src/tools/shell-sandbox.js', () => {
   };
 });
 
-import { runSandboxedCommand } from '../../src/tools/shell-sandbox.js';
-import { ShellTool } from '../../src/tools/shell.js';
+import { runSandboxedCommand } from '../../src/tools/shell/sandbox.js';
+import { ShellTool } from '../../src/tools/shell/index.js';
 
 const mockedRunSandboxedCommand = runSandboxedCommand as unknown as vi.Mock;
 
