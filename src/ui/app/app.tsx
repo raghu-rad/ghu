@@ -1,17 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
-import type { Agent, AgentToolMessage } from '../agent/index.js';
-import { ModelController } from '../llm/routing/model-controller.js';
-import { formatMarkdown, formatUserMessage } from '../output/markdown.js';
+import type { Agent, AgentToolMessage } from '../../agent/index.js';
+import { ModelController } from '../../llm/routing/model-controller.js';
+import { formatMarkdown, formatUserMessage } from '../../output/markdown.js';
 import type {
   ToolDisplay,
   ToolDisplayPreview,
   ToolDisplayPreviewLine,
   ToolDisplayTone,
-} from '../tools/index.js';
-import { MultilineTextInput } from './components/multiline-text-input.js';
-import { InteractiveApprovalProvider } from './interactive-approval-provider.js';
+} from '../../tools/index.js';
+import type {
+  ShellCommandRiskLevel,
+  ShellToolApprovalScope,
+} from '../../tools/shell/approvals.js';
+import { MultilineTextInput } from '../components/multiline-text-input.js';
+import { InteractiveApprovalProvider } from '../providers/interactive-approval-provider.js';
 
 type ConversationItem =
   | { id: string; role: 'user'; content: string }

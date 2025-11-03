@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { InteractiveApprovalProvider } from '../../src/ui/interactive-approval-provider.js';
+import { InteractiveApprovalProvider } from '../../src/ui/index.js';
+import type { ShellToolApprovalRequest } from '../../src/tools/shell/approvals.js';
 
-const mockRequest = {
+const mockRequest: ShellToolApprovalRequest = {
   command: 'curl https://example.com',
   analysis: {
     command: 'curl https://example.com',
@@ -14,7 +15,7 @@ const mockRequest = {
     },
   },
   sandbox: {},
-} as const;
+};
 
 describe('InteractiveApprovalProvider', () => {
   it('emits requests and resolves allow-once decisions', async () => {

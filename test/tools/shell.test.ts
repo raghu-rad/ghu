@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('../../src/tools/shell/sandbox.js', () => {
   const runSandboxedCommand = vi.fn();
@@ -22,7 +22,7 @@ vi.mock('../../src/tools/shell/sandbox.js', () => {
 import { runSandboxedCommand } from '../../src/tools/shell/sandbox.js';
 import { ShellTool } from '../../src/tools/shell/index.js';
 
-const mockedRunSandboxedCommand = runSandboxedCommand as unknown as vi.Mock;
+const mockedRunSandboxedCommand = runSandboxedCommand as unknown as Mock;
 
 describe('ShellTool', () => {
   beforeEach(() => {

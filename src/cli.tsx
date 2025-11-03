@@ -9,8 +9,7 @@ import { ModelController } from './llm/routing/model-controller.js';
 import { resolveModel } from './llm/routing/model-routing.js';
 import { PromptBuilder } from './prompt/builder.js';
 import { createDefaultToolRegistry } from './tools/index.js';
-import { App } from './ui/app.js';
-import { InteractiveApprovalProvider } from './ui/interactive-approval-provider.js';
+import { App, InteractiveApprovalProvider } from './ui/index.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 interface CliOptions {
