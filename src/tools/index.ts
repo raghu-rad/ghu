@@ -61,7 +61,7 @@ export class ToolRegistry {
 import { ReadFileTool, type ReadFileToolOptions } from './read-file.js';
 import { ReadFilesTool, type ReadFilesToolOptions } from './read-files.js';
 import { WriteFileTool, type WriteFileToolOptions } from './write-file.js';
-import { ShellTool, type ShellToolOptions } from './shell.js';
+import { ShellTool, type ShellToolOptions } from './shell/index.js';
 
 export { ReadFileTool } from './read-file.js';
 export type { ReadFileToolOptions } from './read-file.js';
@@ -69,6 +69,8 @@ export { ReadFilesTool } from './read-files.js';
 export type { ReadFilesToolOptions } from './read-files.js';
 export { WriteFileTool } from './write-file.js';
 export type { WriteFileToolOptions } from './write-file.js';
+export { ShellTool } from './shell/index.js';
+export type { ShellToolOptions } from './shell/index.js';
 
 export interface ToolRegistryOptions {
   includeShell?: boolean;
