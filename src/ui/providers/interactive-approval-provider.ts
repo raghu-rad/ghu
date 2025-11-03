@@ -5,7 +5,7 @@ import type {
   ShellToolApprovalRequest,
   ShellToolApprovalResult,
   ShellToolApprovalScope,
-} from '../tools/shell-approvals.js';
+} from '../../tools/shell/approvals.js';
 
 export type InteractiveApprovalDecision =
   | { type: 'allow'; scope: ShellToolApprovalScope }
@@ -76,7 +76,7 @@ export class InteractiveApprovalProvider
     this.pending.delete(requestId);
     const result = this.mapDecision(entry, decision);
 
-    if (result.decision === 'allow' && decision.scope === 'session') {
+    if (decision.type === 'allow' && decision.scope === 'session') {
       this.approvedCommands.add(entry.cacheKey);
     }
 
