@@ -17,6 +17,11 @@ export class MockLLMClient implements LLMClient {
         role: 'assistant',
         content: `[mock:${this.model}] ${content}`,
       },
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      },
     };
   }
 }

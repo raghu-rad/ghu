@@ -16,6 +16,7 @@ import type {
 } from '../../tools/shell/approvals.js';
 import { MultilineTextInput } from '../components/multiline-text-input.js';
 import { InteractiveApprovalProvider } from '../providers/interactive-approval-provider.js';
+import type { TokenUsage } from '../../history/conversation-history.js';
 
 type ConversationItem =
   | { id: string; role: 'user'; content: string }
@@ -45,6 +46,11 @@ const uid = (() => {
 
 const EMPTY_WARNINGS: readonly string[] = [];
 
+function formatModelLabel(model: { provider: string; model: string; providerLabel?: string }) {
+  const providerDisplay = model.providerLabel ?? model.provider;
+  return `${providerDisplay} "${model.model}"`;
+}
+
 interface AppProps {
   agent: Agent;
   approvalProvider: InteractiveApprovalProvider;
@@ -68,6 +74,10 @@ export function App({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const streamedToolMessages = useRef(false);
   const [pendingApprovals, setPendingApprovals] = useState<string[]>([]);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage>(() => agent.getTokenUsage());
+  const [modelLabel, setModelLabel] = useState(() =>
+    formatModelLabel(modelController.getCurrent()),
+  );
 
   const appendItems = useCallback((items: ConversationItem[]) => {
     setConversation((current) => [...current, ...items]);
@@ -103,6 +113,7 @@ export function App({
     }
 
     setConversation(initialItems);
+    setModelLabel(formatModelLabel(currentModel));
   }, [modelController, warnings]);
 
   useEffect(() => {
@@ -176,6 +187,8 @@ export function App({
         setConversation([]);
         approvalProvider.cancelAll('Conversation reset.');
         approvalProvider.resetSession();
+        setTokenUsage(agent.getTokenUsage());
+        setModelLabel(formatModelLabel(modelController.getCurrent()));
         setStatusMessage('Conversation history cleared.');
         return;
       }
@@ -234,6 +247,13 @@ export function App({
               content: `Switched to ${label} model "${result.model}".`,
             },
           ]);
+          setModelLabel(
+            formatModelLabel({
+              provider: result.provider,
+              model: result.model,
+              providerLabel: result.providerLabel,
+            }),
+          );
         }
         return;
       }
@@ -266,7 +286,7 @@ export function App({
 
       setStatusMessage(`Unknown command: ${command}`);
     },
-    [agent, approvalProvider, exit, modelController, appendItems],
+    [agent, approvalProvider, exit, modelController, appendItems, setTokenUsage, setModelLabel],
   );
 
   const handleStreamedToolMessage = useCallback(
@@ -314,6 +334,7 @@ export function App({
       try {
         const result = await agent.processUserMessage(normalized, {
           onToolMessage: handleStreamedToolMessage,
+          onUsageUpdated: setTokenUsage,
         });
 
         if (result.error) {
@@ -351,7 +372,7 @@ export function App({
         setProcessing(false);
       }
     },
-    [agent, appendItems, handleCommand, isProcessing],
+    [agent, appendItems, handleCommand, handleStreamedToolMessage, isProcessing, setTokenUsage],
   );
 
   return (
@@ -372,14 +393,17 @@ export function App({
 
       <ThinkingIndicator active={isProcessing} />
 
-      <Box marginTop={1}>
-        <Text color="cyan">› </Text>
-        <MultilineTextInput
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSubmit}
-          focus={pendingApprovals.length === 0}
-        />
+      <Box marginTop={1} flexDirection="column">
+        <Box>
+          <Text color="cyan">› </Text>
+          <MultilineTextInput
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSubmit}
+            focus={pendingApprovals.length === 0}
+          />
+        </Box>
+        <TokenUsageIndicator usage={tokenUsage} modelLabel={modelLabel} width={columns} />
       </Box>
     </Box>
   );
@@ -414,6 +438,24 @@ function ConversationLine({ item, width }: ConversationLineProps) {
     default:
       return <Text color="red">{item.content}</Text>;
   }
+}
+
+interface TokenUsageIndicatorProps {
+  usage: TokenUsage;
+  modelLabel: string;
+  width?: number;
+}
+
+function TokenUsageIndicator({ usage, modelLabel, width }: TokenUsageIndicatorProps) {
+  return (
+    <Box marginTop={1} width={width} justifyContent="space-between">
+      <Text color="gray">
+        Tokens used: prompt {usage.promptTokens}, completion {usage.completionTokens}, total{' '}
+        {usage.totalTokens}
+      </Text>
+      <Text color="gray">{`Model: ${modelLabel}`}</Text>
+    </Box>
+  );
 }
 
 interface ToolConversationLineProps {
