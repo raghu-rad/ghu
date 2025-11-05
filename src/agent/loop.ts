@@ -1,4 +1,6 @@
 import type { AgentConfig } from '../config/index.js';
+import { ConversationHistory } from '../history/conversation-history.js';
+import type { TokenUsage } from '../history/conversation-history.js';
 import type { LLMClient, LLMMessage, LLMResponse, LLMToolCall } from '../llm/index.js';
 import { PromptBuilder } from '../prompt/builder.js';
 import { ToolRegistry, type ToolDisplay } from '../tools/index.js';
@@ -9,6 +11,7 @@ export interface AgentOptions {
   promptBuilder?: PromptBuilder;
   toolRegistry: ToolRegistry;
   maxIterations?: number;
+  history?: ConversationHistory;
 }
 
 export interface AgentTurnResult {
@@ -25,22 +28,24 @@ export interface AgentToolMessage {
 
 export interface ProcessUserMessageOptions {
   onToolMessage?: (message: AgentToolMessage) => void;
+  onUsageUpdated?: (usage: TokenUsage) => void;
 }
 
 export class Agent {
   private readonly promptBuilder: PromptBuilder;
-  private readonly history: LLMMessage[] = [];
+  private readonly history: ConversationHistory;
   private readonly toolRegistry: ToolRegistry;
   private readonly maxIterations: number;
 
   constructor(private readonly options: AgentOptions) {
     this.promptBuilder = options.promptBuilder ?? new PromptBuilder();
+    this.history = options.history ?? new ConversationHistory();
     this.toolRegistry = options.toolRegistry;
     this.maxIterations = options.maxIterations ?? 5;
   }
 
   reset(): void {
-    this.history.length = 0;
+    this.history.clear();
   }
 
   getConfig(): AgentConfig {
@@ -60,21 +65,25 @@ export class Agent {
   }
 
   getHistory(): readonly LLMMessage[] {
-    return this.history;
+    return this.history.getMessages();
+  }
+
+  getTokenUsage(): TokenUsage {
+    return this.history.getTokenUsage();
   }
 
   async processUserMessage(
     userInput: string,
     options?: ProcessUserMessageOptions,
   ): Promise<AgentTurnResult> {
-    this.history.push({ role: 'user', content: userInput });
+    this.history.appendUser(userInput);
 
     const toolMessages: AgentToolMessage[] = [];
 
     for (let iteration = 0; iteration < this.maxIterations; iteration += 1) {
       const messages = this.promptBuilder.build({
         systemPrompt: this.options.config.systemPrompt,
-        history: this.history,
+        history: this.history.getMessages(),
       });
 
       const toolSpecs = this.toolRegistry.list().map((tool) => ({
@@ -93,12 +102,8 @@ export class Agent {
         return { error: `LLM call failed: ${message}` };
       }
 
-      const assistantMessage: LLMMessage = {
-        ...response.message,
-        toolCalls: response.toolCalls ?? response.message.toolCalls,
-      };
-
-      this.history.push(assistantMessage);
+      const assistantMessage = this.history.registerLLMResponse(response);
+      options?.onUsageUpdated?.(this.history.getTokenUsage());
 
       const toolCalls = assistantMessage.toolCalls ?? [];
 
@@ -124,28 +129,23 @@ export class Agent {
     const tool = this.toolRegistry.get(toolCall.name);
 
     if (!tool) {
-      const missingToolMessage: LLMMessage = {
-        role: 'tool',
+      const message = this.history.appendToolMessage({
         name: toolCall.name,
         content: `ERROR: Requested tool "${toolCall.name}" is not available.`,
         toolCallId: toolCall.id,
-      };
-      this.history.push(missingToolMessage);
-      return { message: missingToolMessage };
+      });
+      return { message };
     }
 
     try {
       const result = await tool.run(toolCall.arguments ?? {});
       const content = result.error ? `ERROR: ${result.error}` : result.output;
 
-      const message: LLMMessage = {
-        role: 'tool',
+      const message = this.history.appendToolMessage({
         name: tool.name,
         content,
         toolCallId: toolCall.id,
-      };
-
-      this.history.push(message);
+      });
       return {
         message,
         display: result.display,
@@ -153,13 +153,11 @@ export class Agent {
     } catch (error) {
       const messageContent =
         error instanceof Error ? error.message : 'Unknown tool execution error';
-      const message: LLMMessage = {
-        role: 'tool',
+      const message = this.history.appendToolMessage({
         name: tool.name,
         content: `ERROR: ${messageContent}`,
         toolCallId: toolCall.id,
-      };
-      this.history.push(message);
+      });
       return {
         message,
         display: {

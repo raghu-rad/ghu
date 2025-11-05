@@ -29,6 +29,13 @@ export interface GenerateOptions {
 export interface LLMResponse {
   message: LLMMessage;
   toolCalls?: LLMToolCall[];
+  usage?: LLMResponseUsage;
+}
+
+export interface LLMResponseUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
 }
 
 export interface LLMClient {

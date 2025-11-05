@@ -7,6 +7,7 @@ export type {
   LLMClient,
   LLMMessage,
   LLMResponse,
+  LLMResponseUsage,
   LLMRole,
   LLMToolCall,
   ToolSpecification,

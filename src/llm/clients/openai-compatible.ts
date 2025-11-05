@@ -62,9 +62,18 @@ export class OpenAICompatibleLLMClient implements LLMClient {
         toolCalls,
       };
 
+      const usage = completion.usage
+        ? {
+            promptTokens: completion.usage.prompt_tokens ?? undefined,
+            completionTokens: completion.usage.completion_tokens ?? undefined,
+            totalTokens: completion.usage.total_tokens ?? undefined,
+          }
+        : undefined;
+
       return {
         message,
         toolCalls,
+        ...(usage ? { usage } : {}),
       };
     } catch (error) {
       if (error instanceof OpenAI.APIError) {
