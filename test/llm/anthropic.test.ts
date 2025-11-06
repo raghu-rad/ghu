@@ -1,14 +1,54 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AnthropicsLLMClient } from '../../src/llm/clients/anthropic.js';
 import type { LLMMessage, ToolSpecification } from '../../src/llm/types.js';
 
-const ORIGINAL_FETCH = globalThis.fetch;
+const { createSpy, anthropicCtor, SDKApiError } = vi.hoisted(() => {
+  const createSpy = vi.fn();
+  const anthropicCtor = vi.fn();
+
+  class SDKApiError extends Error {
+    status?: number;
+    error?: { message?: string };
+
+    constructor(status?: number, error?: { message?: string }, message?: string) {
+      super(message ?? error?.message ?? 'Anthropic error');
+      this.status = status;
+      this.error = error;
+    }
+  }
+
+  return {
+    createSpy,
+    anthropicCtor,
+    SDKApiError,
+  };
+});
+
+vi.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: anthropicCtor,
+  APIError: SDKApiError,
+}));
+
+let capturedOptions: Record<string, unknown> | undefined;
 
 describe('AnthropicsLLMClient', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    globalThis.fetch = ORIGINAL_FETCH;
+  beforeEach(() => {
+    capturedOptions = undefined;
+    createSpy.mockReset();
+    anthropicCtor.mockReset();
+    anthropicCtor.mockImplementation(function MockAnthropic(
+      this: unknown,
+      options: Record<string, unknown>,
+    ) {
+      capturedOptions = options;
+      return {
+        messages: {
+          create: createSpy,
+        },
+      };
+    });
   });
 
   it('sends mapped messages and parses tool calls from the response', async () => {
@@ -42,43 +82,37 @@ describe('AnthropicsLLMClient', () => {
       },
     ];
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        id: 'msg_test',
-        type: 'message',
-        role: 'assistant',
-        model: 'claude-sonnet-4.5',
-        stop_reason: 'tool_use',
-        stop_sequence: null,
-        content: [
-          { type: 'text', text: 'Calling tool with new input.' },
-          { type: 'tool_use', id: 'toolu_new', name: 'test-tool', input: { delta: 10 } },
-        ],
-        usage: { input_tokens: 120, output_tokens: 30 },
-      }),
+    createSpy.mockResolvedValue({
+      id: 'msg_test',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4.5',
+      stop_reason: 'tool_use',
+      stop_sequence: null,
+      content: [
+        { type: 'text', text: 'Calling tool with new input.' },
+        { type: 'tool_use', id: 'toolu_new', name: 'test-tool', input: { delta: 10 } },
+      ],
+      usage: { input_tokens: 120, output_tokens: 30 },
     });
 
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const result = await client.generate(messages, { tools, maxTokens: 2048 });
 
-    const result = await client.generate(messages, { tools });
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://api.anthropic.com/v1/messages');
-    expect(init.method).toBe('POST');
-    expect(init.headers).toMatchObject({
-      'content-type': 'application/json',
-      'x-api-key': 'test-key',
-      'anthropic-version': '2023-06-01',
+    expect(anthropicCtor).toHaveBeenCalledTimes(1);
+    expect(capturedOptions).toEqual({
+      apiKey: 'test-key',
+      baseURL: 'https://api.anthropic.com',
+      defaultHeaders: { 'anthropic-version': '2023-06-01' },
     });
 
-    const body = JSON.parse(String(init.body));
-    expect(body.model).toBe('claude-sonnet-4.5');
-    expect(body.system).toBe('Be concise.');
-    expect(body.tools).toHaveLength(1);
-    expect(body.messages).toHaveLength(3); // user, assistant, user(tool result)
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const payload = createSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.model).toBe('claude-sonnet-4.5');
+    expect(payload.stream).toBe(false);
+    expect(payload.max_tokens).toBe(2048);
+    expect(payload.system).toBe('Be concise.');
+    expect(payload.messages).toHaveLength(3);
+    expect(payload.tools).toHaveLength(1);
 
     expect(result.message.content).toBe('Calling tool with new input.');
     expect(result.toolCalls).toHaveLength(1);
@@ -87,5 +121,20 @@ describe('AnthropicsLLMClient', () => {
     expect(result.usage?.promptTokens).toBe(120);
     expect(result.usage?.completionTokens).toBe(30);
     expect(result.usage?.totalTokens).toBe(150);
+  });
+
+  it('wraps SDK API errors with provider context', async () => {
+    const client = new AnthropicsLLMClient({
+      model: 'claude-haiku-4.5',
+      apiKey: 'secret',
+      providerName: 'Anthropic',
+    });
+
+    const error = new SDKApiError(400, { message: 'bad request' }, 'bad request');
+    createSpy.mockRejectedValue(error);
+
+    await expect(client.generate([{ role: 'user', content: 'hi' }])).rejects.toThrow(
+      'Anthropic API error (400): bad request',
+    );
   });
 });

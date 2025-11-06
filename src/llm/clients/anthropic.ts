@@ -1,3 +1,13 @@
+import Anthropic, { APIError } from '@anthropic-ai/sdk';
+import type {
+  ContentBlockParam,
+  Message,
+  MessageCreateParams,
+  MessageCreateParamsNonStreaming,
+  Tool,
+  ToolResultBlockParam,
+  Usage,
+} from '@anthropic-ai/sdk/resources/messages.mjs';
 import { randomUUID } from 'node:crypto';
 
 import type {
@@ -9,72 +19,6 @@ import type {
   LLMToolCall,
   ToolSpecification,
 } from '../types.js';
-
-interface AnthropicContentTextBlock {
-  type: 'text';
-  text: string;
-}
-
-interface AnthropicContentToolUseBlock {
-  type: 'tool_use';
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-interface AnthropicContentToolResultBlock {
-  type: 'tool_result';
-  tool_use_id: string;
-  content: string | AnthropicContentTextBlock[];
-  is_error?: boolean;
-}
-
-type AnthropicContentBlock =
-  | AnthropicContentTextBlock
-  | AnthropicContentToolUseBlock
-  | AnthropicContentToolResultBlock;
-
-interface AnthropicUserMessage {
-  role: 'user';
-  content: string | AnthropicContentBlock[];
-}
-
-interface AnthropicAssistantMessage {
-  role: 'assistant';
-  content: AnthropicContentBlock[];
-}
-
-type AnthropicMessage = AnthropicUserMessage | AnthropicAssistantMessage;
-
-interface AnthropicToolDefinition {
-  name: string;
-  description?: string;
-  input_schema: Record<string, unknown>;
-}
-
-interface AnthropicUsageResponse {
-  input_tokens?: number;
-  output_tokens?: number;
-}
-
-interface AnthropicResponseBody {
-  id: string;
-  type: string;
-  role: 'assistant';
-  content: AnthropicContentBlock[];
-  model: string;
-  stop_reason: string | null;
-  stop_sequence: string | null;
-  usage?: AnthropicUsageResponse;
-}
-
-interface AnthropicErrorResponse {
-  type: 'error';
-  error: {
-    type: string;
-    message: string;
-  };
-}
 
 export interface AnthropicClientOptions {
   model: string;
@@ -92,6 +36,7 @@ const DEFAULT_MAX_TOKENS = 4096;
 export class AnthropicsLLMClient implements LLMClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly client: Anthropic;
   private readonly model: string;
   private readonly providerName: string;
   private readonly version: string;
@@ -110,16 +55,25 @@ export class AnthropicsLLMClient implements LLMClient {
     this.providerName = options.providerName;
     this.defaultMaxTokens = options.defaultMaxTokens ?? DEFAULT_MAX_TOKENS;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+
+    this.client = new Anthropic({
+      apiKey: this.apiKey,
+      baseURL: this.baseUrl,
+      defaultHeaders: {
+        'anthropic-version': this.version,
+      },
+    });
   }
 
   async generate(messages: LLMMessage[], options?: GenerateOptions): Promise<LLMResponse> {
     const { systemPrompt, conversation } = this.mapMessages(messages);
     const tools = this.mapTools(options?.tools ?? []);
 
-    const body: Record<string, unknown> = {
+    const body: MessageCreateParamsNonStreaming = {
       model: this.model,
       max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
       messages: conversation,
+      stream: false,
     };
 
     if ((systemPrompt ?? '').trim().length > 0) {
@@ -134,30 +88,20 @@ export class AnthropicsLLMClient implements LLMClient {
       body.tools = tools;
     }
 
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': this.version,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      await this.handleErrorResponse(response);
+    try {
+      const response = await this.client.messages.create(body);
+      return this.mapResponse(response);
+    } catch (error) {
+      this.handleError(error);
     }
-
-    const data = (await response.json()) as AnthropicResponseBody;
-    return this.mapResponse(data);
   }
 
   private mapMessages(messages: LLMMessage[]): {
     systemPrompt?: string;
-    conversation: AnthropicMessage[];
+    conversation: MessageCreateParams['messages'];
   } {
     const systemParts: string[] = [];
-    const conversation: AnthropicMessage[] = [];
+    const conversation: MessageCreateParams['messages'] = [];
 
     for (const message of messages) {
       switch (message.role) {
@@ -175,7 +119,7 @@ export class AnthropicsLLMClient implements LLMClient {
           break;
         }
         case 'assistant': {
-          const contentBlocks: AnthropicContentBlock[] = [];
+          const contentBlocks: ContentBlockParam[] = [];
 
           if (message.content && message.content.trim().length > 0) {
             contentBlocks.push({
@@ -192,20 +136,23 @@ export class AnthropicsLLMClient implements LLMClient {
                 id,
                 name: toolCall.name,
                 input: toolCall.arguments ?? {},
-              });
+              } as ContentBlockParam);
             });
           }
 
           conversation.push({
             role: 'assistant',
-            content: contentBlocks.length > 0 ? contentBlocks : [{ type: 'text', text: '' }],
+            content:
+              contentBlocks.length > 0
+                ? contentBlocks
+                : ([{ type: 'text', text: '' }] as ContentBlockParam[]),
           });
           break;
         }
         case 'tool': {
           const toolUseId = message.toolCallId ?? this.createToolUseId();
           const isError = message.content.trim().toUpperCase().startsWith('ERROR:');
-          const content: AnthropicContentToolResultBlock = {
+          const content: ToolResultBlockParam = {
             type: 'tool_result',
             tool_use_id: toolUseId,
             content: message.content,
@@ -231,15 +178,16 @@ export class AnthropicsLLMClient implements LLMClient {
     };
   }
 
-  private mapTools(tools: ToolSpecification[]): AnthropicToolDefinition[] {
+  private mapTools(tools: ToolSpecification[]): Tool[] {
     return tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      input_schema: tool.parameters ?? { type: 'object' },
+      input_schema: (tool.parameters as Tool['input_schema']) ?? { type: 'object' },
+      type: 'custom',
     }));
   }
 
-  private mapResponse(response: AnthropicResponseBody): LLMResponse {
+  private mapResponse(response: Message): LLMResponse {
     const textParts: string[] = [];
     const toolCalls: LLMToolCall[] = [];
 
@@ -250,7 +198,7 @@ export class AnthropicsLLMClient implements LLMClient {
         toolCalls.push({
           id: block.id,
           name: block.name,
-          arguments: block.input ?? {},
+          arguments: (block.input as Record<string, unknown>) ?? {},
         });
       }
     }
@@ -270,7 +218,7 @@ export class AnthropicsLLMClient implements LLMClient {
     };
   }
 
-  private mapUsage(usage?: AnthropicUsageResponse): LLMResponseUsage | undefined {
+  private mapUsage(usage?: Usage | null): LLMResponseUsage | undefined {
     if (!usage) {
       return undefined;
     }
@@ -285,19 +233,24 @@ export class AnthropicsLLMClient implements LLMClient {
     };
   }
 
-  private async handleErrorResponse(response: Response): Promise<never> {
-    let message = `${this.providerName} API error (${response.status})`;
+  private handleError(error: unknown): never {
+    if (error instanceof APIError) {
+      const status = typeof error.status === 'number' ? ` (${error.status})` : '';
+      const message =
+        (typeof error.error === 'object' &&
+        error.error !== null &&
+        'message' in error.error
+          ? (error.error as { message?: string }).message
+          : undefined) ?? error.message;
 
-    try {
-      const data = (await response.json()) as AnthropicErrorResponse;
-      if (data?.error?.message) {
-        message += `: ${data.error.message}`;
-      }
-    } catch {
-      // Ignore JSON parse errors and fall back to status text.
+      throw new Error(`${this.providerName} API error${status}: ${message}`);
     }
 
-    throw new Error(message);
+    if (error instanceof Error) {
+      throw new Error(`${this.providerName} unexpected error: ${error.message}`);
+    }
+
+    throw new Error(`${this.providerName} unexpected error`);
   }
 
   private createToolUseId(seed?: number): string {
