@@ -1,3 +1,4 @@
+import { AnthropicsLLMClient } from './clients/anthropic.js';
 import { OpenAICompatibleLLMClient } from './clients/openai-compatible.js';
 import { MockLLMClient } from './clients/mock.js';
 import type { LLMClient } from './types.js';
@@ -33,6 +34,13 @@ export function createLLMClient(
         apiKey: options.apiKey,
         baseUrl: options.baseUrl,
         providerName: options.providerName ?? 'DeepSeek',
+      });
+    case 'anthropic':
+      return new AnthropicsLLMClient({
+        model,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        providerName: options.providerName ?? 'Anthropic',
       });
     case 'openai':
       return new OpenAICompatibleLLMClient({

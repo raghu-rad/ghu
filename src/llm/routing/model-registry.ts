@@ -40,6 +40,14 @@ export const MODEL_REGISTRY: ModelRegistryDefinition = {
       requiresApiKey: true,
     },
     {
+      id: 'anthropic',
+      label: 'Anthropic',
+      apiKeyEnv: 'ANTHROPIC_API_KEY',
+      baseUrlEnv: 'ANTHROPIC_BASE_URL',
+      defaultBaseUrl: 'https://api.anthropic.com',
+      requiresApiKey: true,
+    },
+    {
       id: 'mock',
       label: 'Mock',
       requiresApiKey: false,
@@ -75,6 +83,24 @@ export const MODEL_REGISTRY: ModelRegistryDefinition = {
       label: 'GPT-5 nano',
       provider: 'openai',
       description: 'Lowest-latency GPT-5 option for rapid iterations.',
+    },
+    {
+      id: 'claude-sonnet-4-5',
+      label: 'Claude 4.5 Sonnet',
+      provider: 'anthropic',
+      description: 'Balanced Claude model suitable for general-purpose tasks.',
+    },
+    {
+      id: 'claude-haiku-4-5',
+      label: 'Claude 4.5 Haiku',
+      provider: 'anthropic',
+      description: 'Fast Claude model optimized for lightweight interactions.',
+    },
+    {
+      id: 'claude-opus-4-1',
+      label: 'Claude 4.1 Opus',
+      provider: 'anthropic',
+      description: 'Highest capability Claude model for complex workflows.',
     },
     {
       id: 'mock-alpha',
