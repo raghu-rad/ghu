@@ -1,1 +1,1 @@
-export type ProviderId = 'deepseek' | 'openai' | 'mock';
+export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'mock';
