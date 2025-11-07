@@ -9,9 +9,14 @@ let capturedOptions: Record<string, unknown> | undefined;
 vi.mock('openai', () => {
   class APIError extends Error {
     status?: number;
-    constructor(message: string, status?: number) {
-      super(message);
+    headers?: Headers;
+    error?: unknown;
+
+    constructor(status?: number, error?: unknown, message?: string, headers?: Headers) {
+      super(message ?? 'API error');
       this.status = status;
+      this.error = error;
+      this.headers = headers;
     }
   }
 
@@ -179,7 +184,7 @@ describe('OpenAICompatibleLLMClient', () => {
     });
 
     const { APIError } = await import('openai');
-    const apiError = new APIError('bad request', 400);
+    const apiError = new APIError(400, { message: 'bad request' }, 'bad request', undefined);
     createSpy.mockRejectedValue(apiError);
 
     await expect(client.generate([{ role: 'user', content: 'hi' }])).rejects.toThrow(

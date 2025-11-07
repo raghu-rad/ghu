@@ -92,6 +92,19 @@ pnpm dev
 
 The development command launches the interactive Ink interface. Type `/reset` to clear the conversation, `/model list` to see available models, or `/exit` to quit.
 
+## Non-Interactive Mode
+
+Run Ghu without the Ink UI by supplying a prompt and optional model configuration:
+
+```bash
+ghu --non-interactive --prompt "Summarize the repo" [--provider <provider>] [--model <model>]
+```
+
+- `--prompt` is required and is executed as a single agent turn.
+- `--provider` and `--model` default to `deepseek` / `deepseek-chat` when omitted.
+- The agent spawns with the same tools available in the UI and prints the final response to stdout.
+- Missing API credentials trigger an automatic fallback to the mock provider unless an explicit provider/model is supplied.
+
 ## Configuration
 
 Set the following environment variables (see `.env.example` for a template):
