@@ -94,4 +94,30 @@ describe('ShellTool', () => {
     expect(result.error).toBe('Denied in test');
     expect(mockedRunSandboxedCommand).not.toHaveBeenCalled();
   });
+
+  it('bypasses approval when yolo mode is enabled', async () => {
+    mockedRunSandboxedCommand.mockResolvedValueOnce({
+      stdout: 'ok\n',
+      stderr: '',
+      exitCode: 0,
+      signal: null,
+    });
+
+    const approvalProvider = {
+      requestApproval: vi.fn(),
+    };
+
+    const tool = new ShellTool({
+      approvalProvider,
+      shouldSkipApproval: () => true,
+    });
+    const result = await tool.run({ command: 'curl https://example.com' });
+
+    expect(approvalProvider.requestApproval).not.toHaveBeenCalled();
+    expect(result.output).toBe('ok');
+    expect(mockedRunSandboxedCommand).toHaveBeenCalledWith(
+      'curl https://example.com',
+      expect.any(Object),
+    );
+  });
 });
