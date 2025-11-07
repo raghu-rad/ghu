@@ -17,6 +17,7 @@ interface CliOptions {
   model?: string;
   systemPrompt?: string;
   listTools?: boolean;
+  yolo?: boolean;
 }
 
 async function main(): Promise<void> {
@@ -29,7 +30,8 @@ async function main(): Promise<void> {
     .option('-p, --provider <provider>', 'LLM provider override')
     .option('-m, --model <model>', 'Model name override')
     .option('-s, --system-prompt <prompt>', 'Custom system prompt')
-    .option('--list-tools', 'List available tools and exit');
+    .option('--list-tools', 'List available tools and exit')
+    .option('--yolo', 'Skip shell approvals (YOLO mode)');
 
   program.parse(process.argv);
 
@@ -54,10 +56,12 @@ async function main(): Promise<void> {
   config.providerLabel = providerLabel;
 
   const approvalProvider = new InteractiveApprovalProvider();
+  let agentRef: Agent | undefined;
   const toolRegistry = createDefaultToolRegistry({
     shell: {
       approvalProvider,
       timeoutMs: 2 * 60 * 1000,
+      shouldSkipApproval: () => agentRef?.isYoloMode() ?? false,
     },
   });
 
@@ -105,37 +109,23 @@ async function main(): Promise<void> {
     promptBuilder: new PromptBuilder(),
     toolRegistry,
     maxIterations: 100,
+    yoloMode: Boolean(options.yolo),
   });
+  agentRef = agent;
   const modelController = new ModelController(agent);
 
-  const leaveAlternateScreen = enterAlternateScreen();
-  try {
-    const { waitUntilExit } = render(
-      <App
-        agent={agent}
-        approvalProvider={approvalProvider}
-        modelController={modelController}
-        initializationWarnings={initializationWarnings}
-      />,
-    );
-    await waitUntilExit();
-  } finally {
-    leaveAlternateScreen();
-  }
+  const { waitUntilExit } = render(
+    <App
+      agent={agent}
+      approvalProvider={approvalProvider}
+      modelController={modelController}
+      initializationWarnings={initializationWarnings}
+    />,
+  );
+  await waitUntilExit();
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
-
-function enterAlternateScreen(): () => void {
-  if (!process.stdout.isTTY) {
-    return () => {};
-  }
-
-  process.stdout.write('\u001b[?1049h\u001b[H');
-  return () => {
-    process.stdout.write('\u001b[?1049l');
-  };
-}

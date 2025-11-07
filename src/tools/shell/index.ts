@@ -17,6 +17,7 @@ export interface ShellToolOptions {
   cwd?: string;
   sandbox?: ShellSandboxOptions;
   approvalProvider?: ShellToolApprovalProvider;
+  shouldSkipApproval?: () => boolean;
 }
 
 const PREVIEW_HEAD_LINES = 2;
@@ -176,6 +177,10 @@ export class ShellTool implements Tool {
   }
 
   private async ensureApproval(analysis: ShellCommandAnalysis, rawCommand: string): Promise<void> {
+    if (this.shouldSkipApproval()) {
+      return;
+    }
+
     if (analysis.risk.level !== 'external') {
       return;
     }
@@ -203,6 +208,14 @@ export class ShellTool implements Tool {
   private async executeCommand(command: string): Promise<ShellSandboxResult> {
     const sandboxOptions = this.resolveSandboxOptions();
     return runSandboxedCommand(command, sandboxOptions);
+  }
+
+  private shouldSkipApproval(): boolean {
+    try {
+      return this.options.shouldSkipApproval?.() === true;
+    } catch {
+      return false;
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 
 import type { Agent, AgentToolMessage } from '../../agent/index.js';
@@ -78,6 +78,7 @@ export function App({
   const [modelLabel, setModelLabel] = useState(() =>
     formatModelLabel(modelController.getCurrent()),
   );
+  const [yoloMode, setYoloMode] = useState(() => agent.isYoloMode());
 
   const appendItems = useCallback((items: ConversationItem[]) => {
     setConversation((current) => [...current, ...items]);
@@ -233,6 +234,39 @@ export function App({
         return;
       }
 
+      if (command === '/yolo') {
+        const next = !agent.isYoloMode();
+        agent.setYoloMode(next);
+        setYoloMode(next);
+        setStatusMessage(
+          next
+            ? 'YOLO mode enabled: shell approvals will be skipped.'
+            : 'YOLO mode disabled: shell approvals restored.',
+        );
+        return;
+      }
+
+      const yoloMatch = command.match(/^\/yolo\s+(on|off|toggle)$/i);
+      if (yoloMatch) {
+        const [, directive] = yoloMatch;
+        let next = agent.isYoloMode();
+        if (directive === 'on') {
+          next = true;
+        } else if (directive === 'off') {
+          next = false;
+        } else {
+          next = !next;
+        }
+        agent.setYoloMode(next);
+        setYoloMode(next);
+        setStatusMessage(
+          next
+            ? 'YOLO mode enabled: shell approvals will be skipped.'
+            : 'YOLO mode disabled: shell approvals restored.',
+        );
+        return;
+      }
+
       const modelMatch = command.match(/^\/model\s+(.+)/);
       if (modelMatch) {
         const [, identifier] = modelMatch;
@@ -286,7 +320,16 @@ export function App({
 
       setStatusMessage(`Unknown command: ${command}`);
     },
-    [agent, approvalProvider, exit, modelController, appendItems, setTokenUsage, setModelLabel],
+    [
+      agent,
+      approvalProvider,
+      exit,
+      modelController,
+      appendItems,
+      setTokenUsage,
+      setModelLabel,
+      setYoloMode,
+    ],
   );
 
   const handleStreamedToolMessage = useCallback(
@@ -403,7 +446,12 @@ export function App({
             focus={pendingApprovals.length === 0}
           />
         </Box>
-        <TokenUsageIndicator usage={tokenUsage} modelLabel={modelLabel} width={columns} />
+        <TokenUsageIndicator
+          usage={tokenUsage}
+          modelLabel={modelLabel}
+          width={columns}
+          yoloMode={yoloMode}
+        />
       </Box>
     </Box>
   );
@@ -443,17 +491,25 @@ function ConversationLine({ item, width }: ConversationLineProps) {
 interface TokenUsageIndicatorProps {
   usage: TokenUsage;
   modelLabel: string;
+  yoloMode: boolean;
   width?: number;
 }
 
-function TokenUsageIndicator({ usage, modelLabel, width }: TokenUsageIndicatorProps) {
+function TokenUsageIndicator({ usage, modelLabel, yoloMode, width }: TokenUsageIndicatorProps) {
   return (
-    <Box marginTop={1} width={width} justifyContent="space-between">
-      <Text color="gray">
-        Tokens used: prompt {usage.promptTokens}, completion {usage.completionTokens}, total{' '}
-        {usage.totalTokens}
-      </Text>
-      <Text color="gray">{`Model: ${modelLabel}`}</Text>
+    <Box marginTop={1} width={width} flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text color="gray">
+          Tokens used: prompt {usage.promptTokens}, completion {usage.completionTokens}, total{' '}
+          {usage.totalTokens}
+        </Text>
+        <Text color="gray">{`Model: ${modelLabel}`}</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text color={yoloMode ? 'yellow' : 'gray'}>
+          {`YOLO mode: ${yoloMode ? 'ON (shell approvals skipped)' : 'off'}`}
+        </Text>
+      </Box>
     </Box>
   );
 }

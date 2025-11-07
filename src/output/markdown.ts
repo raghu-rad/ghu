@@ -51,8 +51,8 @@ export function formatUserMessage(message: string, width?: number): string {
 
   let effectiveInnerWidth = baseWidth;
   if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
-    const desiredInnerWidth = Math.max(Math.floor(width) - 2, 1);
-    effectiveInnerWidth = Math.max(baseWidth, desiredInnerWidth);
+    const availableInnerWidth = Math.max(Math.floor(width) - 2, 1);
+    effectiveInnerWidth = Math.max(availableInnerWidth, label.length);
   }
 
   const totalWidth = effectiveInnerWidth + 2;
@@ -68,13 +68,62 @@ export function formatUserMessage(message: string, width?: number): string {
   const labelContent = padToWidth(` ${label} `);
   const labelLine = `${Ansi.backgroundUserLabel}${Ansi.foregroundUserLabel}${Ansi.bold}${labelContent}${Ansi.boldOff}${Ansi.reset}`;
 
-  const contentLines = trimmedLines.map((line) => {
+  const contentLines = trimmedLines.flatMap((line) => {
     const safeLine = line.length === 0 ? '' : line;
-    const padded = padToWidth(` ${safeLine} `);
-    return `${Ansi.backgroundUser}${Ansi.foregroundUser}${padded}${Ansi.reset}`;
+    const wrapped = wrapLinePreservingWords(safeLine, effectiveInnerWidth);
+    return wrapped.map((segment) => {
+      const padded = padToWidth(` ${segment} `);
+      return `${Ansi.backgroundUser}${Ansi.foregroundUser}${padded}${Ansi.reset}`;
+    });
   });
 
   return [labelLine, ...contentLines].join('\n');
+}
+
+function wrapLinePreservingWords(line: string, width: number): string[] {
+  if (width <= 0) {
+    return [line];
+  }
+
+  const glyphs = Array.from(line);
+  if (glyphs.length === 0) {
+    return [''];
+  }
+
+  const segments: string[] = [];
+  let cursor = 0;
+
+  while (cursor < glyphs.length) {
+    let sliceEnd = Math.min(cursor + width, glyphs.length);
+
+    if (sliceEnd < glyphs.length) {
+      let breakIndex = -1;
+      for (let index = sliceEnd - 1; index >= cursor; index -= 1) {
+        if (isWhitespaceGlyph(glyphs[index])) {
+          breakIndex = index + 1;
+          break;
+        }
+      }
+
+      if (breakIndex > cursor) {
+        sliceEnd = breakIndex;
+      }
+    }
+
+    const segment = glyphs.slice(cursor, sliceEnd).join('').replace(/\s+$/u, '');
+    segments.push(segment);
+
+    cursor = sliceEnd;
+    while (cursor < glyphs.length && isWhitespaceGlyph(glyphs[cursor])) {
+      cursor += 1;
+    }
+  }
+
+  return segments.length === 0 ? [''] : segments;
+}
+
+function isWhitespaceGlyph(glyph: string): boolean {
+  return /\s/u.test(glyph);
 }
 
 function renderTokens(tokens: TokenSequence, indent = 0): string {

@@ -36,4 +36,16 @@ describe('formatUserMessage', () => {
     expect(lines[0]).toHaveLength(12);
     expect(lines[1]).toHaveLength(12);
   });
+
+  it('wraps long lines so backgrounds remain consistent', () => {
+    const output = formatUserMessage(
+      'This is a very long line that should wrap across multiple rows',
+      20,
+    );
+    const lines = output.split('\n').map(stripAnsi);
+    expect(lines.length).toBeGreaterThanOrEqual(4);
+    lines.forEach((line) => {
+      expect(line).toHaveLength(20);
+    });
+  });
 });

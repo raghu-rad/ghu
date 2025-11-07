@@ -12,6 +12,7 @@ export interface AgentOptions {
   toolRegistry: ToolRegistry;
   maxIterations?: number;
   history?: ConversationHistory;
+  yoloMode?: boolean;
 }
 
 export interface AgentTurnResult {
@@ -36,16 +37,26 @@ export class Agent {
   private readonly history: ConversationHistory;
   private readonly toolRegistry: ToolRegistry;
   private readonly maxIterations: number;
+  private yoloMode: boolean;
 
   constructor(private readonly options: AgentOptions) {
     this.promptBuilder = options.promptBuilder ?? new PromptBuilder();
     this.history = options.history ?? new ConversationHistory();
     this.toolRegistry = options.toolRegistry;
     this.maxIterations = options.maxIterations ?? 5;
+    this.yoloMode = options.yoloMode ?? false;
   }
 
   reset(): void {
     this.history.clear();
+  }
+
+  isYoloMode(): boolean {
+    return this.yoloMode;
+  }
+
+  setYoloMode(enabled: boolean): void {
+    this.yoloMode = enabled;
   }
 
   getConfig(): AgentConfig {
